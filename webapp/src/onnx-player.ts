@@ -11,6 +11,21 @@ import { SIZE } from './twixt.js';
 // Point onnxruntime-web at its own .wasm files (hashed into assets/ by Vite).
 ort.env.wasm.wasmPaths = import.meta.env.BASE_URL;
 
+// Force single-threaded WASM.
+//
+// When Vite bundles ort into a module worker, ort computes the pthread worker
+// URL as `new URL("ort.min.mjs", import.meta.url)` which resolves to
+// /twixtbot-app/assets/ort.min.mjs — a file that doesn't exist (ort is
+// bundled into the worker JS, not kept as a separate file).  The Worker
+// creation therefore fails with "Importing a module script failed", which
+// poisons ort's initWasm state and prevents any inference.
+//
+// Setting numThreads=1 makes ort skip thread-pool worker creation entirely
+// (the branch is guarded by `n > 1`).  SharedArrayBuffer is still available
+// (crossOriginIsolated=true in our SW-served context), so the threaded WASM
+// binary instantiates correctly in single-thread mode.
+ort.env.wasm.numThreads = 1;
+
 export class OnnxPlayer {
   private session: ort.InferenceSession | null = null;
 
