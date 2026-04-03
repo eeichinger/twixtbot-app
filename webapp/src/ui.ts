@@ -74,7 +74,7 @@ export class BoardUI {
   setGame(game: Game, enabled: boolean): void {
     this.game    = game;
     this.enabled = enabled;
-    this.render();
+    this._resize(); // re-measure in case the canvas was hidden (size=0) during init
   }
 
   setEnabled(enabled: boolean): void {
