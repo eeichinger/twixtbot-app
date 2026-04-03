@@ -7,7 +7,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'model.onnx'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,wasm,mjs}'],
+        globPatterns: ['**/*.{js,css,html,mjs}'],
         // Don't inline model.onnx in precache manifest (too large for revision hash);
         // use runtime CacheFirst instead.
         additionalManifestEntries: [],
