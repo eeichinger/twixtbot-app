@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#16213e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TwixT" />
+  <link rel="apple-touch-icon" href="/icons/192.png" />
+  <title>TwixT vs AI</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Loading screen -->
+    <div id="loading-screen">
+      <div class="loading-logo">TwixT</div>
+      <div class="loading-spinner"></div>
+      <div id="loading-msg">Loading AI model…</div>
+    </div>
+
+    <!-- Game screen (hidden until ready) -->
+    <div id="game-screen" class="hidden">
+      <header id="status-bar">
+        <span id="status-text">Your turn (Black)</span>
+        <button id="undo-btn" title="Undo your last move">Undo</button>
+        <button id="new-game-btn" title="Start a new game">New</button>
+      </header>
+
+      <main id="board-container">
+        <canvas id="board-canvas"></canvas>
+      </main>
+
+      <!-- Overlay shown while AI is thinking -->
+      <div id="thinking-overlay" class="hidden">
+        <div class="thinking-spinner"></div>
+        <div>AI is thinking…</div>
+      </div>
+
+      <!-- Game-over overlay -->
+      <div id="gameover-overlay" class="hidden">
+        <div id="gameover-msg"></div>
+        <button id="gameover-new-btn">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
