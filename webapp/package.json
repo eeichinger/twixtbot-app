@@ -4,17 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev":     "vite",
-    "build":   "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "onnxruntime-web": "^1.20.1"
   },
   "devDependencies": {
-    "typescript":      "^5.4.5",
-    "vite":            "^5.4.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.20.5",
-    "workbox-build":   "^7.1.1"
+    "vitest": "^1.6.1",
+    "workbox-build": "^7.1.1"
   }
 }
