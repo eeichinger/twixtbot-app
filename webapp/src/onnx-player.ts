@@ -23,6 +23,10 @@ export class OnnxPlayer {
    * even though SharedArrayBuffer may now be available.
    */
   async load(modelUrl: string): Promise<void> {
+    console.log('[OnnxPlayer] crossOriginIsolated:', typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'N/A');
+    console.log('[OnnxPlayer] SharedArrayBuffer:', typeof SharedArrayBuffer !== 'undefined');
+    console.log('[OnnxPlayer] wasmPaths:', ort.env.wasm.wasmPaths);
+    console.log('[OnnxPlayer] numThreads:', ort.env.wasm.numThreads);
     this.session = await ort.InferenceSession.create(modelUrl, {
       // ort tries backends in order: WebGPU (GPU-accelerated) → WASM (CPU fallback).
       executionProviders: ['webgpu', 'wasm'],

@@ -9,6 +9,43 @@
   <meta name="apple-mobile-web-app-title" content="TwixT" />
   <link rel="apple-touch-icon" href="/icons/192.png" />
   <title>TwixT vs AI</title>
+
+  <!-- ===== DIAGNOSTIC OVERLAY (remove once issue is resolved) ===== -->
+  <style>
+    #diag {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: rgba(0,0,0,0.88); color: #39ff14;
+      font: 10px/1.4 monospace; padding: 6px 8px;
+      white-space: pre-wrap; word-break: break-all;
+      max-height: 55vh; overflow-y: auto;
+    }
+  </style>
+  <script>
+    // Runs synchronously on HTML parse — captures the very first state.
+    var $diag = null;
+    function diagLog(s) {
+      if (!$diag) $diag = document.getElementById('diag');
+      if ($diag) $diag.textContent += s + '\n';
+      console.log('[DIAG]', s);
+    }
+    window.diagLog = diagLog;
+    document.addEventListener('DOMContentLoaded', function() {
+      $diag = document.getElementById('diag');
+      diagLog('=== PAGE LOAD ===');
+      diagLog('crossOriginIsolated: ' + (typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'N/A'));
+      diagLog('SharedArrayBuffer: ' + (typeof SharedArrayBuffer !== 'undefined'));
+      diagLog('Atomics: ' + (typeof Atomics !== 'undefined'));
+      diagLog('SW supported: ' + ('serviceWorker' in navigator));
+      diagLog('SW controller: ' + (
+        navigator.serviceWorker && navigator.serviceWorker.controller
+          ? navigator.serviceWorker.controller.scriptURL
+          : 'none'
+      ));
+      diagLog('UA: ' + navigator.userAgent.slice(0, 120));
+    });
+  </script>
+  <!-- ===== END DIAGNOSTIC ===== -->
+
   <!--
     When the service worker takes control for the first time (or updates),
     reload so the navigation itself goes through the SW and receives the
@@ -17,6 +54,7 @@
   <script>
     if ('serviceWorker' in navigator && !crossOriginIsolated) {
       navigator.serviceWorker.addEventListener('controllerchange', function() {
+        diagLog('SW controllerchange → reloading');
         location.reload();
       }, { once: true });
     }
@@ -24,6 +62,7 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+  <div id="diag"></div>
   <div id="app">
     <!-- Loading screen -->
     <div id="loading-screen">

@@ -57,7 +57,13 @@ function initWorker(): void {
 
   worker.onmessage = (e) => {
     const msg = e.data;
-    if (msg.type === 'ready') {
+    if (msg.type === 'diag') {
+      const log = (window as any).diagLog as (s: string) => void;
+      log(`WORKER crossOriginIsolated: ${msg.crossOriginIsolated}`);
+      log(`WORKER SharedArrayBuffer: ${msg.sharedArrayBuffer}`);
+      log(`WORKER Atomics: ${msg.atomics}`);
+      log(`WORKER location: ${msg.location}`);
+    } else if (msg.type === 'ready') {
       onWorkerReady();
     } else if (msg.type === 'result') {
       onAiMove(msg.move as MoveMsg);
@@ -180,6 +186,48 @@ function setThinking(thinking: boolean): void {
 // Bootstrap
 // -------------------------------------------------------------------------
 
+async function runDiagnostics(): Promise<void> {
+  const log = (window as any).diagLog as (s: string) => void;
+  if (!log) return;
+
+  log('=== SW CHECK ===');
+  if (!('serviceWorker' in navigator)) {
+    log('SW: not supported');
+    return;
+  }
+
+  // Show all existing registrations.
+  const regs = await navigator.serviceWorker.getRegistrations().catch(e => {
+    log('SW getRegistrations error: ' + e); return [];
+  });
+  log(`SW registrations: ${regs.length}`);
+  for (const r of regs) {
+    const state = r.active?.state ?? r.waiting?.state ?? r.installing?.state ?? 'none';
+    log(`  scope=${r.scope} state=${state}`);
+  }
+
+  // Attempt (re-)registration — idempotent, shows success/failure explicitly.
+  const swUrl = import.meta.env.BASE_URL + 'sw.js';
+  log(`SW registering: ${swUrl}`);
+  await navigator.serviceWorker.register(swUrl)
+    .then(r => {
+      const state = r.active?.state ?? r.waiting?.state ?? r.installing?.state ?? 'pending';
+      log(`SW register OK  scope=${r.scope}  state=${state}`);
+    })
+    .catch(err => log(`SW register FAILED: ${err}`));
+
+  log('=== WASM FILES ===');
+  const base = import.meta.env.BASE_URL;
+  for (const f of ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.jsep.wasm']) {
+    try {
+      const r = await fetch(base + f, { method: 'HEAD' });
+      log(`${f}: HTTP ${r.status}`);
+    } catch (e) {
+      log(`${f}: FETCH ERROR ${e}`);
+    }
+  }
+}
+
 function init(): void {
   board = new BoardUI(boardCanvas, { onMove: onHumanMove });
 
@@ -187,6 +235,7 @@ function init(): void {
   $newGameBtn.addEventListener('click',  startNewGame);
   $gameoverNewBtn.addEventListener('click', startNewGame);
 
+  runDiagnostics();
   initWorker();
 }
 
