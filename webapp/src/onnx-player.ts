@@ -27,9 +27,20 @@ export class OnnxPlayer {
     console.log('[OnnxPlayer] SharedArrayBuffer:', typeof SharedArrayBuffer !== 'undefined');
     console.log('[OnnxPlayer] wasmPaths:', ort.env.wasm.wasmPaths);
     console.log('[OnnxPlayer] numThreads:', ort.env.wasm.numThreads);
+
+    // Only include webgpu if the browser actually exposes the WebGPU API.
+    // Attempting webgpu on browsers that don't support it (e.g. iOS Safari in a
+    // module worker) causes ort to call initWasm() internally and fail, which
+    // permanently poisons the WASM init state so the fallback also fails.
+    const providers: ort.InferenceSession.ExecutionProviderConfig[] =
+      (typeof navigator !== 'undefined' && 'gpu' in navigator)
+        ? ['webgpu', 'wasm']
+        : ['wasm'];
+    console.log('[OnnxPlayer] executionProviders:', providers);
+
     this.session = await ort.InferenceSession.create(modelUrl, {
       // ort tries backends in order: WebGPU (GPU-accelerated) → WASM (CPU fallback).
-      executionProviders: ['webgpu', 'wasm'],
+      executionProviders: providers,
     }).catch((e) => {
       throw new Error(`Failed to load ONNX model from ${modelUrl}: ${e}`);
     });
