@@ -112,6 +112,7 @@ html, body {
 #board-canvas {
   display: block;
   touch-action: none;
+  cursor: pointer;   /* required for iOS Safari to dispatch pointer/touch events on canvas */
 }
 
 /* Thinking overlay */

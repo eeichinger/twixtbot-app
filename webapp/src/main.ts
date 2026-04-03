@@ -16,7 +16,7 @@ import { BoardUI } from './ui.js';
 // -------------------------------------------------------------------------
 
 const MODEL_URL     = import.meta.env.BASE_URL + 'model.onnx';
-const MCTS_TRIALS   = 100;   // reduce to 50 on slow devices
+const MCTS_TRIALS   = 50;    // single-threaded WASM on mobile — keep snappy
 const HUMAN_COLOR   = BLACK;
 const AI_COLOR      = WHITE;
 

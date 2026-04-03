@@ -136,19 +136,33 @@ export class BoardUI {
       this.render();
     });
 
-    this.canvas.addEventListener('pointerdown', (e) => {
+    // Use touchstart (not pointerdown) as the primary tap handler on mobile.
+    // iOS Safari does not reliably dispatch pointerdown on <canvas> elements
+    // even with touch-action:none; touchstart is always delivered.
+    const handleTap = (clientX: number, clientY: number) => {
       if (!this.enabled || !this.game) return;
-      e.preventDefault();
-      const r    = this.canvas.getBoundingClientRect();
+      const r = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width  / r.width;
       const scaleY = this.canvas.height / r.height;
       const p = this._fromCanvas(
-        (e.clientX - r.left) * scaleX,
-        (e.clientY - r.top)  * scaleY,
+        (clientX - r.left) * scaleX,
+        (clientY - r.top)  * scaleY,
       );
-      if (!p) return;
-      if (!this._isLegalForHuman(p)) return;
+      if (!p || !this._isLegalForHuman(p)) return;
       this.cb.onMove(p);
+    };
+
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      handleTap(t.clientX, t.clientY);
+    }, { passive: false });
+
+    // Keep pointerdown for mouse/stylus on desktop.
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return; // already handled by touchstart
+      e.preventDefault();
+      handleTap(e.clientX, e.clientY);
     });
   }
 
