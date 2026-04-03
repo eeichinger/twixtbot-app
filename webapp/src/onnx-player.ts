@@ -8,9 +8,8 @@ import type { Game } from './twixt.js';
 import { toInputArrays, threeToOne } from './naf.js';
 import { SIZE } from './twixt.js';
 
-// Point onnxruntime-web at its own .wasm files.
-// Vite copies these from node_modules into dist/ via the optimizeDeps exclude.
-ort.env.wasm.wasmPaths = '/';
+// Point onnxruntime-web at its own .wasm files (hashed into assets/ by Vite).
+ort.env.wasm.wasmPaths = import.meta.env.BASE_URL;
 
 export class OnnxPlayer {
   private session: ort.InferenceSession | null = null;

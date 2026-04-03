@@ -15,7 +15,7 @@ import { BoardUI } from './ui.js';
 // Constants
 // -------------------------------------------------------------------------
 
-const MODEL_URL     = '/model.onnx';
+const MODEL_URL     = import.meta.env.BASE_URL + 'model.onnx';
 const MCTS_TRIALS   = 100;   // reduce to 50 on slow devices
 const HUMAN_COLOR   = BLACK;
 const AI_COLOR      = WHITE;
