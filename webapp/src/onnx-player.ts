@@ -28,19 +28,12 @@ export class OnnxPlayer {
     console.log('[OnnxPlayer] wasmPaths:', ort.env.wasm.wasmPaths);
     console.log('[OnnxPlayer] numThreads:', ort.env.wasm.numThreads);
 
-    // Only include webgpu if the GPU adapter is actually usable.
-    // navigator.gpu exists on iOS Safari 17.4+ but ort's WebGPU/JSEP backend
-    // fails inside a module worker with "Importing a module script failed",
-    // which poisons ort's shared initWasm state so the WASM fallback also fails.
-    // Checking requestAdapter() rules out platforms where the API exists but is
-    // non-functional (returns null on iOS Safari in this context).
-    let providers: ort.InferenceSession.ExecutionProviderConfig[] = ['wasm'];
-    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
-      try {
-        const adapter = await (navigator as unknown as { gpu: { requestAdapter(): Promise<unknown> } }).gpu.requestAdapter();
-        if (adapter) providers = ['webgpu', 'wasm'];
-      } catch { /* WebGPU not truly available */ }
-    }
+    // Use WASM only. WebGPU (JSEP) fails inside a module worker on iOS Safari
+    // even when navigator.gpu / requestAdapter() look healthy: ort internally
+    // calls initWasm() with the JSEP binary, which throws "Importing a module
+    // script failed" and permanently poisons the shared initWasm state so the
+    // WASM fallback also fails.  WebGPU can be re-added once ort fixes this.
+    const providers: ort.InferenceSession.ExecutionProviderConfig[] = ['wasm'];
     console.log('[OnnxPlayer] executionProviders:', providers);
 
     this.session = await ort.InferenceSession.create(modelUrl, {
