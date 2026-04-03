@@ -9,7 +9,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
-      includeAssets: ['icons/*.png', 'model.onnx'],
+      includeAssets: ['icons/*.png'],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,mjs}'],
       },
