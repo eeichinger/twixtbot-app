@@ -1,305 +1,348 @@
-#! /usr/bin/env python
-import argparse
-import bisect
+#!/usr/bin/env python
+"""
+Training loop for TwixNet — PyTorch replacement of the TF1 original.
+
+Usage:
+    python train.py --model path/to/model.pt [options] selfplay_file...
+
+The model file is loaded with torch.load() and saved back to the same path
+after training. Use model.py's TwixNet + torch.save(model, path) to create
+initial model files.
+"""
 import collections
 import numpy
 import os
 import random
 import re
 import sys
-import tempfile
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 
 import naf
-import nnmcts
 import twixt
 import wrs
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--model', '-m', type=str, required=True)
-parser.add_argument('--batch_size', '-b', type=int, default=256)
-parser.add_argument('--num_batches', '-n', type=int, default=1000)
-parser.add_argument('--learning_rate', '-L', type=float, default=0.01)
-parser.add_argument('--decay_rate', '-D', type=float, default=1.0)
-parser.add_argument('--temperature', '-t', type=float, default=0.5)
-parser.add_argument('--policy_epsilon', '-P', type=float, default=0.01)
-parser.add_argument('--save_after', '-S', type=int, default=0)
-parser.add_argument('--holdout', '-H', type=str, required=False)
-parser.add_argument('--holdout_fraction', '-F', type=float, default=1.0)
-parser.add_argument('--debug', action='store_true')
-# parser.add_argument('--momentum', '-M', type=float, default=0.9)
-parser.add_argument('spfiles', metavar='S', type=str, nargs='+', help='a file with selfplay binary logs')
-args = parser.parse_args()
+import torch
+import torch.nn.functional as F
 
-print "get our current neural net: %s" % (args.model)
-ix = args.model.rfind('/')
-if ix == -1:
-    model_dir = "./"
-else:
-    model_dir = args.model[:ix]
-print "model_dir is", model_dir
-ix = args.model.find('-')
-if ix == -1:
-    model_name = args.model
-else:
-    model_name = args.model[:ix]
-print "model_name is", model_name
+from model import TwixNet
 
-sess = tf.Session()
 
-saver = tf.train.import_meta_graph(args.model + ".meta")
-saver.restore(sess, args.model)
+# ---------------------------------------------------------------------------
+# Data preparation helpers (importable for testing)
+# ---------------------------------------------------------------------------
 
-if args.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, log_usage=False)
+def make_policy_target(N, temperature):
+    """Convert MCTS visit counts to a softmax policy target.
 
-graph = tf.get_default_graph()
-pegx = graph.get_tensor_by_name("pegx:0")
-linkx = graph.get_tensor_by_name("linkx:0")
-locx = graph.get_tensor_by_name("locx:0")
-loss = graph.get_tensor_by_name("total_loss:0")
-l1 = graph.get_tensor_by_name("total_l1:0")
-l2 = graph.get_tensor_by_name("total_l2:0")
-l3 = graph.get_tensor_by_name("total_l3:0")
-movelogits = graph.get_tensor_by_name("movelogits:0")
-pwin = graph.get_tensor_by_name("pwin:0")
-if pwin.shape[1] == 1:
-    pwin_ = graph.get_tensor_by_name("pwin_:0")
-    pwin_size = 1
-else:
-    pwin_ = graph.get_tensor_by_name("pwin3_:0")
-    pwin_size = 3
-pmove_ = graph.get_tensor_by_name("pmove_:0")
+    Args:
+        N (np.ndarray): visit counts, shape (NUM_MOVES,)
+        temperature (float): 0.0 (argmax), 0.5 (square root), 1.0 (linear)
 
-train_step = graph.get_collection("optimizer")[0]
-try:
-    learning_rate = graph.get_tensor_by_name("optimizer/learning_rate:0")
-except KeyError:
-    learning_rate = graph.get_tensor_by_name("learning_rate:0")
+    Returns:
+        np.ndarray float32, sums to 1.0
+    """
+    if temperature == 0.5:
+        nup = numpy.square(N.astype(numpy.float32))
+    elif temperature == 0.0:
+        nup = numpy.where(N == N.max(), 1.0, 0.0).astype(numpy.float32)
+    elif temperature == 1.0:
+        nup = N.astype(numpy.float32)
+    else:
+        raise ValueError(f"Bad temperature: {temperature}")
+    nsum = nup.sum()
+    assert nsum > 0, nsum
+    return nup / nsum
 
-# momentum = graph.get_tensor_by_name("optimizer/momentum:0")
-global_step = graph.get_tensor_by_name("optimizer/global_step:0")
-try:
-    is_training = graph.get_tensor_by_name("is_training:0")
-except KeyError:
-    is_training = None
+
+def make_value_target(z):
+    """Convert outcome z ∈ {-1, 0, 1} to integer class index ∈ {0, 1, 2}."""
+    return int(z) + 1
+
+
+# ---------------------------------------------------------------------------
+# File / selector helpers
+# ---------------------------------------------------------------------------
 
 class FileInfo:
+    """Metadata + open handle for a self-play binary file."""
     def __init__(self, filename):
-	self.name = filename
-	stat = os.stat(filename)
-	self.count = stat.st_size // naf.LearningState.NUM_BYTES
-	self.f = open(filename, "rb")
+        self.name = filename
+        stat = os.stat(filename)
+        self.count = stat.st_size // naf.LearningState.NUM_BYTES
+        self.f = open(filename, 'rb')
 
-weight_re = re.compile("w=([0-9]*\.?[0-9]+)")
+
+_weight_re = re.compile(r'w=([0-9]*\.?[0-9]+)')
+
 
 def load_selector(selector, name):
+    """Recursively add a file or directory of self-play data to *selector*.
+
+    A basename matching 'w=<float>' changes the default basket weight for
+    subsequent adds in this subtree.
+
+    Returns:
+        (num_files, num_rows)
+    """
     num_files = 0
     num_rows = 0
-
-    mo = weight_re.match(fn)
+    mo = _weight_re.match(os.path.basename(name))
     if mo:
-	selector.set_default_weight(float(mo.group(1)))
-	return 0, 0
+        selector.set_default_weight(float(mo.group(1)))
+        return 0, 0
     if os.path.isdir(name):
-	for sub in os.listdir(name):
-	    f, r = load_selector(selector, os.path.join(name, sub))
-	    num_files += f
-	    num_rows += r
+        for sub in sorted(os.listdir(name)):
+            f, r = load_selector(selector, os.path.join(name, sub))
+            num_files += f
+            num_rows += r
     elif os.path.isfile(name):
-	fi = FileInfo(name)
-	selector.add_basket(fi.count, obj=fi)
-	num_files += 1
-	num_rows += fi.count
-
+        fi = FileInfo(name)
+        selector.add_basket(fi.count, obj=fi)
+        num_files += 1
+        num_rows += fi.count
     return num_files, num_rows
 
 
-if args.num_batches > 0:
-    selector = wrs.WeightedRandomSelector()
-    num_files = 0
-    num_rows = 0
-    for fn in args.spfiles:
-        f, r = load_selector(selector, fn)
-        num_files += f
-        num_rows += r
+def sample_learning_state(selector):
+    """Draw one valid LearningState uniformly from *selector*.
 
-    print "scanned: #files=%d  #rows=%d" % (num_files, num_rows)
-else:
-    print "no files scanned, #batches = 0"
-
-def collect_one_train_state():
+    Retries silently on corrupt records or all-zero visit counts.
+    """
     while True:
-	bnum, y, fi = selector.random_item()
-	assert y >= 0 and y < fi.count, (y, fi)
-	fi.f.seek(y*naf.LearningState.NUM_BYTES)
-	b = fi.f.read(naf.LearningState.NUM_BYTES)
-	assert len(b) == naf.LearningState.NUM_BYTES
+        _, y, fi = selector.random_item()
+        assert 0 <= y < fi.count, (y, fi)
+        fi.f.seek(y * naf.LearningState.NUM_BYTES)
+        b = fi.f.read(naf.LearningState.NUM_BYTES)
+        assert len(b) == naf.LearningState.NUM_BYTES
         try:
-            ts = naf.LearningState.from_bytes(b, "%s:%d" % (fi.name, y))
-        except ValueError as ve:
-            print "Errored on %s:%d!!" % (fi.name, y)
+            ts = naf.LearningState.from_bytes(b, f'{fi.name}:{y}')
+        except ValueError:
+            print(f'Errored on {fi.name}:{y}!!', file=sys.stderr)
             continue
-
-	if ts.N.any():
-	    r = random.randint(0, 3)
-	    ts.nips.rotate(r)
-	    ts.N = naf.rotate_policy_array(ts.N, r)
-	    return ts
-    # end collect_one_train_state()
-
-
-S = twixt.Game.SIZE
-peg_batch = numpy.zeros((args.batch_size, S, S, 2))
-link_batch = numpy.zeros((args.batch_size, S, S, 8))
-loc_batch = numpy.zeros((args.batch_size, S, S, int(locx.shape[3])))
-pmove_batch = numpy.zeros((args.batch_size, S*(S-2)))
-pwin_batch = numpy.zeros((args.batch_size, pwin_size))
-
-prev_loss = None
-current_rate = args.learning_rate
-
-def load_tensor_data(index, ls):
-    pegs, links, locs = ls.nips.to_input_arrays(loc_batch.shape[3] == 3)
-
-    peg_batch[index,:,:,:] = pegs
-    link_batch[index,:,:,:] = links
-    loc_batch[index,:,:,:] = locs
-
-    if args.temperature == 0.5:
-        nup = numpy.square(ls.N.astype(numpy.float32))
-    elif args.temperature == 0.0:
-        nup = numpy.where(ls.N == ls.N.max(), 1.0, 0.0)
-    elif args.temperature == 1.0:
-        nup = ls.N.astype(numpy.float32)
-    else:
-        raise ValueError("Bad temperature")
-
-    nsum = nup.sum()
-    assert nsum > 0, (nsum, ls.name)
-    nup /= nsum
-    if args.temperature == 0 and args.policy_epsilon > 0:
-        nup += args.policy_epsilon
-        nup /= nup.sum()
-
-    pmove_batch[index,:] = nup
-    if pwin_size == 1:
-        pwin_batch[index,0] = ls.z
-    else:
-        pwin_batch[index,:] = naf.one_to_three(ls.z)
-
+        if ts.N.any():
+            r = random.randint(0, 3)
+            ts.nips.rotate(r)
+            ts.N = naf.rotate_policy_array(ts.N, r)
+            return ts
 
 
 def read_from_holdout(name):
+    """Yield every LearningState from a holdout file or directory tree."""
     if os.path.isdir(name):
-	for sub in os.listdir(name):
-	    for x in read_from_holdout(os.path.join(name, sub)):
-                yield x
+        for sub in sorted(os.listdir(name)):
+            yield from read_from_holdout(os.path.join(name, sub))
     elif os.path.isfile(name):
         lsnb = naf.LearningState.NUM_BYTES
-        with open(name, "rb") as f:
+        with open(name, 'rb') as f:
             all_bytes = f.read()
         for i in range(len(all_bytes) // lsnb):
-            yield naf.LearningState.from_bytes(all_bytes[i*lsnb:(i+1)*lsnb],
-                "%s:%d" % (name, i))
+            yield naf.LearningState.from_bytes(
+                all_bytes[i*lsnb:(i+1)*lsnb], f'{name}:{i}')
 
 
-def group_from_holdout(rng, fraction):
-    i = 0
-    for ls in read_from_holdout(args.holdout):
-        if rng.random() < fraction:
-            continue
-        load_tensor_data(i, ls)
-        i += 1
-        if i == args.batch_size:
-            i = 0
-            yield
+# ---------------------------------------------------------------------------
+# Batch preparation
+# ---------------------------------------------------------------------------
 
-holdout_seed = int(os.urandom(4).encode('hex'), 16)
+def prepare_batch(learning_states, temperature, policy_epsilon=0.0, device='cpu'):
+    """Convert a list of LearningStates into model-ready tensors.
 
-def test_vs_holdout(seed, fraction):
-    rng = random.Random(seed)
-    mean_loss = 0.0
-    mean_l1 = 0.0
-    mean_l2 = 0.0
-    mean_l3 = 0.0
-    n = 0
+    Returns:
+        pegs_t   [B, 2, H, W]   float32
+        links_t  [B, 8, H, W]   float32
+        locs_t   [B, 2, H, W]   float32
+        p_target [B, NUM_MOVES] float32  (normalised policy distribution)
+        v_target [B]            long     (class index: 0=Loss, 1=Draw, 2=Win)
+    """
+    S = twixt.Game.SIZE
+    B = len(learning_states)
+    pegs_arr  = numpy.zeros((B, S, S, 2), dtype=numpy.float32)
+    links_arr = numpy.zeros((B, S, S, 8), dtype=numpy.float32)
+    locs_arr  = numpy.zeros((B, S, S, 2), dtype=numpy.float32)
+    p_arr     = numpy.zeros((B, naf.LearningState.NUM_MOVES), dtype=numpy.float32)
+    v_arr     = numpy.zeros(B, dtype=numpy.int64)
 
-    for _ in group_from_holdout(rng, fraction):
-        with sess.as_default():
-            fd = dict()
-            fd[pegx] = peg_batch
-            fd[linkx] = link_batch
-            fd[locx] = loc_batch
-            fd[pwin_] = pwin_batch
-            fd[pmove_] = pmove_batch
-            fd[learning_rate] = current_rate
-            if is_training is not None:
-                fd[is_training] = False
-            # fd[momentum] = args.momentum
-            loss_value, l1_val, l2_val, l3_val = sess.run([loss, l1, l2, l3], feed_dict=fd)
+    for i, ls in enumerate(learning_states):
+        pegs, links, locs = ls.nips.to_input_arrays()
+        pegs_arr[i]  = pegs
+        links_arr[i] = links
+        locs_arr[i]  = locs
+        p_arr[i] = make_policy_target(ls.N, temperature)
+        if policy_epsilon > 0 and temperature == 0.0:
+            p_arr[i] += policy_epsilon
+            p_arr[i] /= p_arr[i].sum()
+        v_arr[i] = make_value_target(ls.z)
 
+    def nhwc_to_nchw(arr):
+        t = torch.from_numpy(arr)
+        return t.permute(0, 3, 1, 2).to(device)
+
+    return (nhwc_to_nchw(pegs_arr),
+            nhwc_to_nchw(links_arr),
+            nhwc_to_nchw(locs_arr),
+            torch.from_numpy(p_arr).to(device),
+            torch.from_numpy(v_arr).to(device))
+
+
+# ---------------------------------------------------------------------------
+# Trainer
+# ---------------------------------------------------------------------------
+
+class Trainer:
+    """Wraps model + optimiser for one training or evaluation step.
+
+    Args:
+        model:         TwixNet (or compatible nn.Module)
+        learning_rate: initial SGD learning rate
+        device:        torch device string
+    """
+
+    def __init__(self, model, learning_rate=0.01, device='cpu'):
+        self.model = model.to(device)
+        self.device = device
+        self.optimizer = torch.optim.SGD(
+            model.parameters(), lr=learning_rate,
+            momentum=0.9, weight_decay=1e-4)
+        self.step = 0
+
+    def set_learning_rate(self, lr):
+        for pg in self.optimizer.param_groups:
+            pg['lr'] = lr
+
+    def get_learning_rate(self):
+        return self.optimizer.param_groups[0]['lr']
+
+    def train_step(self, pegs, links, locs, p_target, v_target):
+        """One gradient update.
+
+        Returns:
+            (total_loss, policy_loss, value_loss) — Python floats
+        """
+        self.model.train()
+        self.optimizer.zero_grad()
+        policy_logits, value_logits = self.model(pegs, links, locs)
+        l1 = _policy_loss(policy_logits, p_target)
+        l2 = F.cross_entropy(value_logits, v_target)
+        total = l1 + l2
+        total.backward()
+        self.optimizer.step()
+        self.step += 1
+        return total.item(), l1.item(), l2.item()
+
+    def eval_step(self, pegs, links, locs, p_target, v_target):
+        """Forward pass only (no gradient update).
+
+        Returns:
+            (total_loss, policy_loss, value_loss) — Python floats
+        """
+        self.model.eval()
+        with torch.no_grad():
+            policy_logits, value_logits = self.model(pegs, links, locs)
+        l1 = _policy_loss(policy_logits, p_target)
+        l2 = F.cross_entropy(value_logits, v_target)
+        return float(l1 + l2), float(l1), float(l2)
+
+
+def _policy_loss(logits, target):
+    """Soft-target cross-entropy: -∑ target * log_softmax(logits), averaged over batch."""
+    log_probs = F.log_softmax(logits, dim=1)
+    return -(target * log_probs).sum(dim=1).mean()
+
+
+# ---------------------------------------------------------------------------
+# Script entry point
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description='Train TwixNet on self-play data')
+    parser.add_argument('--model', '-m', type=str, required=True,
+                        help='Path to model .pt file (loaded and saved in-place)')
+    parser.add_argument('--batch_size', '-b', type=int, default=256)
+    parser.add_argument('--num_batches', '-n', type=int, default=1000)
+    parser.add_argument('--learning_rate', '-L', type=float, default=0.01)
+    parser.add_argument('--decay_rate', '-D', type=float, default=1.0)
+    parser.add_argument('--temperature', '-t', type=float, default=0.5)
+    parser.add_argument('--policy_epsilon', '-P', type=float, default=0.01)
+    parser.add_argument('--save_after', '-S', type=int, default=0)
+    parser.add_argument('--holdout', '-H', type=str, required=False)
+    parser.add_argument('--holdout_fraction', '-F', type=float, default=1.0)
+    parser.add_argument('spfiles', metavar='S', type=str, nargs='*',
+                        help='self-play binary log files')
+    args = parser.parse_args(argv)
+
+    print(f'Loading model: {args.model}')
+    model = torch.load(args.model, weights_only=False)
+    trainer = Trainer(model, learning_rate=args.learning_rate)
+
+    if args.num_batches > 0:
+        selector = wrs.WeightedRandomSelector()
+        num_files = num_rows = 0
+        for fn in args.spfiles:
+            f, r = load_selector(selector, fn)
+            num_files += f
+            num_rows += r
+        print(f'Scanned: #files={num_files}  #rows={num_rows}')
+    else:
+        print('no files scanned, #batches = 0')
+
+    def run_holdout():
+        rng = random.Random(int.from_bytes(os.urandom(4), 'big'))
+        mean_total = mean_l1 = mean_l2 = 0.0
+        n = 0
+        for ls in read_from_holdout(args.holdout):
+            if rng.random() < args.holdout_fraction:
+                continue
+            batch = prepare_batch([ls], args.temperature, args.policy_epsilon)
+            _, l1, l2 = trainer.eval_step(*batch)
             n += 1
-            mean_loss += (loss_value - mean_loss) / n
-            mean_l1 += (l1_val - mean_l1) / n
-            mean_l2 += (l2_val - mean_l2) / n
-            mean_l3 += (l3_val - mean_l3) / n
+            mean_total += ((l1 + l2) - mean_total) / n
+            mean_l1 += (l1 - mean_l1) / n
+            mean_l2 += (l2 - mean_l2) / n
+        print(f'holdout {n} batch{"es" if n != 1 else ""}')
+        print(f'loss={mean_total:.4g}  (policy={mean_l1:.4g}  value={mean_l2:.4g})')
 
-    print "holdout %d batch%s" % (n, "es" if n != 1 else "")
-    print "loss=%g  (l1=%g l2=%g l3=%g)" % (mean_loss, mean_l1, mean_l2,  mean_l3)
-	
-
-# Only at the end?
-if args.holdout:
-   test_vs_holdout(holdout_seed, args.holdout_fraction)
-
-XX = numpy.zeros((2,2))
-XY = numpy.zeros(2)
-
-for b in range(args.num_batches):
-    print "batch %d" % b
-    batch_items = [collect_one_train_state() for i in range(args.batch_size)]
-
-    for i, ts in enumerate(batch_items):
-        load_tensor_data(i, ts)
-
-    with sess.as_default():
-	fd = dict()
-	fd[pegx] = peg_batch
-	fd[linkx] = link_batch
-	fd[locx] = loc_batch
-	fd[pwin_] = pwin_batch
-	fd[pmove_] = pmove_batch
-	fd[learning_rate] = current_rate
-	if is_training is not None:
-	    fd[is_training] = True
-	# fd[momentum] = args.momentum
-	_, loss_value, l1_val, l2_val, l3_val = sess.run([train_step, loss, l1, l2, l3], feed_dict=fd)
-	x = numpy.array([1, b])
-	y = loss_value
-	XX += numpy.outer(x, x)
-	XY += x*y
-	if b > 2:
-	    betas = numpy.linalg.solve(XX, XY)
-	    print "loss_value = %g  slope=%g" % (loss_value, betas[1])
-	else:
-	    print "loss_value = %g" % (loss_value)
-	print "l1=%g l2=%g l3=%g" % (l1_val, l2_val, l3_val)
-	if prev_loss and loss_value > prev_loss:
-	    current_rate *= args.decay_rate
-	    print "reduce learning to %g" % (current_rate)
-	prev_loss = loss_value
-	if args.save_after and (b+1) % args.save_after == 0:
-	    print "save it"
-	    saver.save(sess, model_name, global_step=global_step)
-	sys.stdout.flush()
-
-if args.num_batches > 0:
-    with sess.as_default():
-        print "save it"
-        saver.save(sess, model_name, global_step=global_step)
-
-    # we already tested vs. holdout once at the start
     if args.holdout:
-       test_vs_holdout(holdout_seed, args.holdout_fraction)
+        run_holdout()
+
+    XX = numpy.zeros((2, 2))
+    XY = numpy.zeros(2)
+    prev_loss = None
+
+    for b in range(args.num_batches):
+        print(f'batch {b}')
+        batch_states = [sample_learning_state(selector)
+                        for _ in range(args.batch_size)]
+        batch = prepare_batch(batch_states, args.temperature, args.policy_epsilon)
+        total, l1, l2 = trainer.train_step(*batch)
+
+        x = numpy.array([1, b])
+        XX += numpy.outer(x, x)
+        XY += x * total
+        if b > 2:
+            betas = numpy.linalg.solve(XX, XY)
+            print(f'loss={total:.4g}  slope={betas[1]:.4g}')
+        else:
+            print(f'loss={total:.4g}')
+        print(f'policy={l1:.4g}  value={l2:.4g}')
+
+        if prev_loss is not None and total > prev_loss:
+            new_lr = trainer.get_learning_rate() * args.decay_rate
+            trainer.set_learning_rate(new_lr)
+            print(f'reduce learning rate to {new_lr:.4g}')
+        prev_loss = total
+
+        if args.save_after and (b + 1) % args.save_after == 0:
+            print('save it')
+            torch.save(model, args.model)
+
+        sys.stdout.flush()
+
+    if args.num_batches > 0:
+        print('save it')
+        torch.save(model, args.model)
+        if args.holdout:
+            run_holdout()
+
+
+if __name__ == '__main__':
+    main()
