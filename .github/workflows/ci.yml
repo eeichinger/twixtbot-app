@@ -22,11 +22,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install Python dependencies
-        run: |
-          pip install numpy pytest
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+        run: pip install -r requirements.txt
 
       - name: Run pytest
         run: pytest tests/ -v
@@ -46,12 +45,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements-export.txt
 
       - name: Install Python dependencies
-        run: |
-          pip install numpy
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install tensorflow-cpu onnxruntime onnx onnxscript
+        run: pip install -r requirements-export.txt
 
       - name: Convert TF1 checkpoint → PyTorch .pt
         run: |
