@@ -19,16 +19,6 @@ import { NeuralMCTS } from './mcts.js';
 import { replayHistory, pt } from './twixt.js';
 import type { MoveRecord } from './twixt.js';
 
-// Runs immediately on worker creation — before any message is received.
-self.postMessage({
-  type: 'diag',
-  source: 'worker-init',
-  crossOriginIsolated: typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'N/A',
-  sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
-  atomics: typeof Atomics !== 'undefined',
-  location: self.location.href,
-});
-
 type MoveMsg = { x: number; y: number } | 'swap';
 
 function toMoveRecord(m: MoveMsg): MoveRecord {
