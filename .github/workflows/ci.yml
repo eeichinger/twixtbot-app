@@ -32,11 +32,58 @@ jobs:
         run: pytest tests/ -v
 
   # -----------------------------------------------------------------------
-  # TypeScript webapp: type-check, test, build, publish artifact
+  # Export trained model: TF1 checkpoint → PyTorch .pt → ONNX
+  # -----------------------------------------------------------------------
+  export-model:
+    name: Export model (TF1 → ONNX)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install tensorflow-cpu onnxruntime onnx onnxscript
+
+      - name: Convert TF1 checkpoint → PyTorch .pt
+        run: |
+          python tools/convert_tf1_to_pt.py \
+            --checkpoint models/six-917000 \
+            --out models/six-917000.pt
+
+      - name: Export PyTorch .pt → ONNX
+        run: |
+          python tools/export_onnx.py \
+            --model models/six-917000.pt \
+            --out webapp/public/model.onnx
+
+      - name: Upload ONNX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-onnx
+          path: webapp/public/model.onnx
+          retention-days: 90
+          if-no-files-found: error
+
+  # -----------------------------------------------------------------------
+  # TypeScript webapp: type-check, test, build, deploy to GitHub Pages
   # -----------------------------------------------------------------------
   webapp:
-    name: Webapp (test + build)
+    name: Webapp (test + build + deploy)
     runs-on: ubuntu-latest
+    needs: export-model
+
+    # Allow the job to write to GitHub Pages
+    permissions:
+      contents: write
 
     defaults:
       run:
@@ -44,6 +91,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download ONNX model
+        uses: actions/download-artifact@v4
+        with:
+          name: model-onnx
+          path: webapp/public/
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -64,6 +117,18 @@ jobs:
       - name: Build PWA
         run: npm run build
 
+      # Add a Cloudflare/Netlify-style _headers file so GitHub Pages serves
+      # the COOP/COEP headers required for WASM threading (SharedArrayBuffer).
+      # GitHub Pages itself ignores _headers, but hosting platforms that do
+      # support it (Cloudflare Pages, Netlify) will pick it up automatically.
+      - name: Write _headers for COOP/COEP
+        run: |
+          cat > dist/_headers << 'EOF'
+          /*
+            Cross-Origin-Opener-Policy: same-origin
+            Cross-Origin-Embedder-Policy: require-corp
+          EOF
+
       - name: Upload PWA artifact
         uses: actions/upload-artifact@v4
         with:
@@ -71,3 +136,12 @@ jobs:
           path: webapp/dist/
           retention-days: 30
           if-no-files-found: error
+
+      - name: Deploy to GitHub Pages
+        # Only deploy on pushes to main (not on PRs or other branches)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: webapp/dist
+          force_orphan: true

@@ -49,6 +49,8 @@ def main():
     traced = torch.jit.trace(model, dummy)
 
     print(f"Exporting to {args.out} (opset {args.opset}) ...")
+    # Use the legacy TorchScript-based exporter (dynamo=False) for compatibility
+    # with traced JIT modules and to support dynamic_axes.
     torch.onnx.export(
         traced,
         dummy,
@@ -64,6 +66,7 @@ def main():
             'policy': {0: 'batch'},
             'value':  {0: 'batch'},
         },
+        dynamo=False,
     )
 
     size_kb = os.path.getsize(args.out) / 1024

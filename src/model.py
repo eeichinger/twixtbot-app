@@ -12,12 +12,14 @@ Architecture overview:
                  summed (not concatenated) → BN → activation
   Residual tower: N blocks of (5×5 conv → BN → act → 5×5 conv → BN → act + skip)
   Policy head:   1×1 conv → BN → act → 1×1 conv → slice border rows → flatten (528)
-  Value head:    2× strided conv (5×5 s2 VALID) → flatten → FC → BN → act → FC(3)
+  Value head:    N× strided conv (5×5 s2) → flatten → FC → BN → act → FC(3)
+                 value_padding='valid' (default) or 'same' (matches TF1 original)
 """
 import math
 import numpy
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.nn.functional as F
 
 import naf
@@ -44,6 +46,26 @@ class _AbsActivation(nn.Module):
     """abs() activation — matches the original TF model exactly."""
     def forward(self, x):
         return x.abs()
+
+
+class _SamePadConv2d(nn.Module):
+    """Conv2d with TensorFlow-style SAME padding (works with stride > 1)."""
+
+    def __init__(self, in_ch, out_ch, kernel_size, stride):
+        super().__init__()
+        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size, stride=stride, padding=0, bias=False)
+        self.stride = stride
+        self.kernel_size = kernel_size
+
+    def forward(self, x):
+        _, _, h, w = x.shape
+        out_h = math.ceil(h / self.stride)
+        out_w = math.ceil(w / self.stride)
+        pad_h = max(0, (out_h - 1) * self.stride + self.kernel_size - h)
+        pad_w = max(0, (out_w - 1) * self.stride + self.kernel_size - w)
+        x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2,
+                       pad_h // 2, pad_h - pad_h // 2])
+        return self.conv(x)
 
 
 class ResidualBlock(nn.Module):
@@ -84,7 +106,7 @@ class TwixNet(nn.Module):
     """
 
     def __init__(self, num_filters=40, num_blocks=12, num_value_hidden=80,
-                 value_reductions=2, activation='gelu'):
+                 value_reductions=2, value_padding='valid', activation='gelu'):
         super().__init__()
         F = num_filters
 
@@ -116,15 +138,18 @@ class TwixNet(nn.Module):
         # ------------------------------------------------------------------
         # Value head: strided convs → flatten → FC → BN → act → FC
         # ------------------------------------------------------------------
-        # Compute output spatial size after strided convs (VALID = padding=0)
         spatial = SIZE
         value_conv_layers = []
         in_ch = F
         for _ in range(value_reductions):
-            value_conv_layers.append(nn.Conv2d(in_ch, F, kernel_size=5, stride=2, padding=0))
+            if value_padding == 'same':
+                value_conv_layers.append(_SamePadConv2d(in_ch, F, kernel_size=5, stride=2))
+                spatial = math.ceil(spatial / 2)   # SAME padding formula
+            else:
+                value_conv_layers.append(nn.Conv2d(in_ch, F, kernel_size=5, stride=2, padding=0, bias=False))
+                spatial = (spatial - 5) // 2 + 1   # VALID padding formula
             value_conv_layers.append(nn.BatchNorm2d(F))
             value_conv_layers.append(_make_activation(activation))
-            spatial = (spatial - 5) // 2 + 1   # VALID padding formula
             in_ch = F
         self.value_convs = nn.Sequential(*value_conv_layers)
 
