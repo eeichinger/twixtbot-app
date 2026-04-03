@@ -13,17 +13,24 @@
     Register the COI service worker before any module loads so that
     SharedArrayBuffer is available when onnxruntime-web initialises WASM.
     On hosts without COOP/COEP headers (GitHub Pages) the SW injects them.
-    On the first visit the page reloads once after the SW activates.
+    On first visit the page reloads once after the SW activates.
   -->
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('%BASE_URL%coi-serviceworker.js')
-        .then((reg) => {
-          if (reg.active && !navigator.serviceWorker.controller) {
-            // SW just activated for the first time — reload to apply headers.
-            window.location.reload();
-          }
-        });
+      navigator.serviceWorker.register('%BASE_URL%coi-serviceworker.js').then(function(reg) {
+        if (crossOriginIsolated) return; // Already isolated — nothing to do.
+        // Wait for the SW to finish installing/activating, then reload so the
+        // navigation request itself goes through the SW (needed for COOP/COEP).
+        var pending = reg.installing || reg.waiting;
+        if (pending) {
+          pending.addEventListener('statechange', function() {
+            if (this.state === 'activated') location.reload();
+          });
+        } else {
+          // SW already active but page not yet isolated — force reload.
+          location.reload();
+        }
+      });
     }
   </script>
   <link rel="stylesheet" href="/src/style.css" />

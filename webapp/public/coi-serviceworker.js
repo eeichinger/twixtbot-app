@@ -28,7 +28,9 @@ self.addEventListener('fetch', (event) => {
 
       const headers = new Headers(response.headers);
       headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-      headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+      // 'require-corp' is supported since Safari 15.2; broader than 'credentialless'.
+      // Safe here because all resources are same-origin (no cross-origin subresources).
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
 
       return new Response(response.body, {
         status: response.status,
