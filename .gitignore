@@ -6,5 +6,6 @@ __pycache__/
 dist/
 build/
 node_modules/
-# WASM files copied from node_modules by prebuild script — not committed
+# WASM/JS files copied from node_modules by prebuild script — not committed
 webapp/public/*.wasm
+webapp/public/*.mjs
