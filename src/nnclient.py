@@ -9,23 +9,23 @@ import smmpp
 
 class Resource:
     def __init__(self, **kwargs):
-	self.location = kwargs.get('location')
-	self.slots = int(kwargs.get('slots', 1))
-	self.name = kwargs.get('name')
-	self.client = smmpp.Client(self.location, self.slots)
+        self.location = kwargs.get('location')
+        self.slots = int(kwargs.get('slots', 1))
+        self.name = kwargs.get('name')
+        self.client = smmpp.Client(self.location, self.slots)
 
     def eval(self, nips):
-	if not isinstance(nips, naf.NetInputs):
-	    raise TypeError("Refactored to take NetInputs")
-	outbytes = nips.to_expanded_bytes()
+        if not isinstance(nips, naf.NetInputs):
+            raise TypeError("Refactored to take NetInputs")
+        outbytes = nips.to_expanded_bytes()
 
-	def set_reply(reply):
-	    self.reply = reply
+        def set_reply(reply):
+            self.reply = reply
 
-	self.client.write_query(outbytes, set_reply)
-	self.client.handle_read()
+        self.client.write_query(outbytes, set_reply)
+        self.client.handle_read()
 
-	p0 = numpy.frombuffer(self.reply, dtype=numpy.float32)
+        p0 = numpy.frombuffer(self.reply, dtype=numpy.float32)
         nml = twixt.Game.SIZE * (twixt.Game.SIZE-2)
         if p0.shape[0] == nml + 1:
             pwin = p0[0]
@@ -36,4 +36,4 @@ class Resource:
         else:
             raise TypeError("Unexpected shape:", p0.shape)
 
-	return pwin, movelogits
+        return pwin, movelogits

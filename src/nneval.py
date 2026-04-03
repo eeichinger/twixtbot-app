@@ -1,84 +1,111 @@
-#! /usr/bin/env python
+"""
+NNEvaluater — PyTorch replacement for the original TF1 nneval.py.
+
+Wraps a TwixNet model and provides the batch-evaluation interface expected by
+nns.py and other callers:
+
+    eval_many_prepare(nips)         -> (pegs, links, locs)  [NHWC numpy]
+    eval_many_doit(pegs, links, locs) -> (pws, mls)          [numpy arrays]
+    eval_many(nips)                 -> (pws, mls)
+    eval_one(nip)                   -> (pws, mls)
+    pwin_size()                     -> 3  (Loss/Draw/Win)
+
+All inputs arrive as NetInputs objects (HWC layout, uint8); internally
+converted to NCHW float32 tensors for the model.
+"""
 import numpy
-import random
-import tensorflow as tf
+import torch
 
 import naf
+import model as mdl
+
 
 class NNEvaluater:
-    def __init__(self, model):
-	self.model = model
+    """Evaluate game positions with a TwixNet model.
 
-	if self.model[-3:] == ".pb":
-	    with tf.gfile.GFile(self.model, "rb") as f:
-		graph_def = tf.GraphDef()
-		graph_def.ParseFromString(f.read())
+    Args:
+        model_or_path: Either a TwixNet instance or a path (str) to a
+                       state-dict file saved with torch.save().
+        device (str):  Torch device string, e.g. 'cpu' or 'cuda'.
+    """
 
-	    with tf.Graph().as_default() as graph:
-		tf.import_graph_def(graph_def, name="mynn")
-	    prefix = "mynn/"
-	    self.sess = tf.Session(graph=graph)
-
-	else:
-	    self.sess = tf.Session()
-	    saver = tf.train.import_meta_graph(self.model + ".meta")
-	    saver.restore(self.sess, self.model)
-	    graph = tf.get_default_graph()
-	    prefix = ""
-
-	self.pegx_t = graph.get_tensor_by_name(prefix + "pegx:0")
-	self.linkx_t = graph.get_tensor_by_name(prefix + "linkx:0")
-	self.locx_t = graph.get_tensor_by_name(prefix + "locx:0")
-	self.pwin_t = graph.get_tensor_by_name(prefix + "pwin:0")
-	self.movelogits_t = graph.get_tensor_by_name(prefix + "movelogits:0")
-	try:
-	    self.is_training_t = graph.get_tensor_by_name(prefix + "is_training:0")
-	except KeyError:
-	    self.is_training_t = None
-
-	self.use_recents = (int(self.locx_t.shape[3]) == 3)
+    def __init__(self, model_or_path, device='cpu'):
+        self.device = device
+        if isinstance(model_or_path, str):
+            net = torch.load(model_or_path, map_location=device,
+                             weights_only=False)
+        else:
+            net = model_or_path
+        self.model = net.eval().to(device)
 
     def pwin_size(self):
-        if self.pwin_t.shape[1] == 1:
-            return 1
-        elif self.pwin_t.shape[1] == 3:
-            return 3
-        else:
-            return ValueError("Weird pwin shape!")
-
-    def eval_many(self, nips):
-	""" Take a list of nips, evaluate them, and return an array of pwins
-	    and movelogitses """
-	pegs, links, locs = self.eval_many_prepare(nips)
-	return self.eval_many_doit(pegs, links, locs)
+        """Return the number of value outputs — always 3 (Loss/Draw/Win)."""
+        return 3
 
     def eval_many_prepare(self, nips):
-	""" Take a list of nafs, and turn it into three identical sized arrays
-	    of pegs, links, rots. """
-	pegs = []
-	links = []
-        locs = []
+        """Convert an iterable of NetInputs to stacked NHWC numpy arrays.
 
-	for n in nips:
-	    p, l, lx = n.to_input_arrays(self.use_recents)
-	    pegs.append(p)
-	    links.append(l)
-            locs.append(lx)
-
-	return pegs, links, locs
+        Returns:
+            pegs  (N, H, W, 2)  uint8
+            links (N, H, W, 8)  uint8
+            locs  (N, H, W, 2)  float32
+        """
+        pegs_list, links_list, locs_list = [], [], []
+        for n in nips:
+            p, l, lx = n.to_input_arrays()
+            pegs_list.append(p)
+            links_list.append(l)
+            locs_list.append(lx)
+        return (numpy.array(pegs_list),
+                numpy.array(links_list),
+                numpy.array(locs_list))
 
     def eval_many_doit(self, pegs, links, locs):
-	feed_dict = {self.pegx_t:pegs, self.linkx_t:links, self.locx_t: locs}
-	if self.is_training_t is not None:
-	    feed_dict[self.is_training_t] = False
+        """Run inference on pre-prepared NHWC numpy arrays.
 
-	return self.sess.run([self.pwin_t,  self.movelogits_t], feed_dict=feed_dict)
+        Args:
+            pegs  (N, H, W, 2)
+            links (N, H, W, 8)
+            locs  (N, H, W, 2)
 
+        Returns:
+            pws (N, 3)     float32 — value logits (Loss, Draw, Win)
+            mls (N, 528)   float32 — policy logits
+        """
+        def to_tensor(arr):
+            t = torch.from_numpy(numpy.asarray(arr, dtype=numpy.float32))
+            return t.permute(0, 3, 1, 2).to(self.device)  # NHWC → NCHW
+
+        pegs_t  = to_tensor(pegs)
+        links_t = to_tensor(links)
+        locs_t  = to_tensor(locs)
+
+        with torch.no_grad():
+            policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
+
+        mls = policy_logits.cpu().numpy().astype(numpy.float32)  # (N, 528)
+        pws = value_logits.cpu().numpy().astype(numpy.float32)   # (N, 3)
+        return pws, mls
+
+    def eval_many(self, nips):
+        """Evaluate a list of NetInputs end-to-end.
+
+        Returns:
+            pws (N, 3)    float32
+            mls (N, 528)  float32
+        """
+        pegs, links, locs = self.eval_many_prepare(nips)
+        return self.eval_many_doit(pegs, links, locs)
 
     def eval_one(self, nip):
-	pegs, links, locs = nip.to_input_arrays(self.use_recents)
+        """Evaluate a single NetInputs.
 
-	feed_dict = {self.pegx_t:[pegs], self.linkx_t:[links], self.locx_t: [locs]}
-	if self.is_training_t is not None:
-	    feed_dict[self.is_training_t] = False
-	return self.sess.run([self.pwin_t,  self.movelogits_t], feed_dict=feed_dict)
+        Returns:
+            pws (1, 3)    float32
+            mls (1, 528)  float32
+        """
+        p, l, lx = nip.to_input_arrays()
+        pegs  = numpy.array([p])
+        links = numpy.array([l])
+        locs  = numpy.array([lx])
+        return self.eval_many_doit(pegs, links, locs)

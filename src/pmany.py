@@ -14,7 +14,7 @@ args = parser.parse_args()
 
 os.mkdir(args.log_dir)
 master_log = os.path.join(args.log_dir, "master.log")
-print "logging to %s" % (master_log)
+print("logging to %s" % (master_log))
 log_f = open(master_log, 'w')
 sys.stdout = log_f
 sys.stderr = log_f
@@ -23,8 +23,8 @@ def mini_log10(n):
     assert n > 0
     k = 1
     while n >= 10:
-	n //= 10
-	k += 1
+        n //= 10
+        k += 1
     return k
 
 def when():
@@ -42,7 +42,7 @@ ProcInfo = namedtuple('ProcInfo', ['p', 'id', 'fileobj'])
 procmap = dict()
 
 for i in range(args.num_clones):
-    print "start instance #%d" % i
+    print("start instance #%d" % i)
     sys.stdout.flush()
     name = "%0*d" % (num_digits, i)
     outfile = os.path.join(args.log_dir, name + ".log")
@@ -54,18 +54,18 @@ for i in range(args.num_clones):
 
 while procmap:
     if len(procmap) % 5 == 0:
-	print "remaining jobs:", " ".join(["%0*d" % (num_digits, proc.id) for proc in sorted(procmap.values(), key=lambda x: x.id)])
+        print("remaining jobs:", " ".join(["%0*d" % (num_digits, proc.id) for proc in sorted(procmap.values(), key=lambda x: x.id)]))
 
     (pid, status) = os.wait()
     proc = procmap[pid]
     signum = status & 0xff
     xcode = (status >> 8) & 0xff
     if signum:
-	print when(), "instance %d exited with signal %d" % (proc.id, signum)
+        print(when(), "instance %d exited with signal %d" % (proc.id, signum))
     elif xcode:
-	print when(), "instance %d exited with status %d" % (proc.id, xcode)
+        print(when(), "instance %d exited with status %d" % (proc.id, xcode))
     else:
-	print when(), "instance %d finished happily" % (proc.id)
+        print(when(), "instance %d finished happily" % (proc.id))
     sys.stdout.flush()
 
     proc.p.wait()
@@ -73,5 +73,5 @@ while procmap:
     del procmap[pid]
 
 
-print when(), "all instances finished."
+print(when(), "all instances finished.")
 log_f.close()

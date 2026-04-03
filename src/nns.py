@@ -26,7 +26,7 @@ if args.kill:
 if args.model is None:
     with open("/data/twixt/models/best", "r") as f:
         model = f.read().strip()
-        print "Model is:", model
+        print("Model is:", model)
 else:
     model = args.model
 
@@ -34,13 +34,13 @@ ne = nneval.NNEvaluater(model)
 
 class NNServer(smmpp.Server):
     def run_jobs(self, jobs):
-        nips = map(naf.NetInputs, jobs)
+        nips = list(map(naf.NetInputs, jobs))
         pegs, links, locs = ne.eval_many_prepare(nips)
         pws, mls = ne.eval_many_doit(pegs, links, locs)
         outs = []
         for i in range(len(jobs)):
-            b = numpy.array([pws[i]], dtype=numpy.float32).tostring()
-            b += mls[i].astype(numpy.float32).tostring()
+            b = numpy.array([pws[i]], dtype=numpy.float32).tobytes()
+            b += mls[i].astype(numpy.float32).tobytes()
             outs.append(b)
         return outs
 
