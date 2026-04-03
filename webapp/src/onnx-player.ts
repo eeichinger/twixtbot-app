@@ -16,29 +16,22 @@ export class OnnxPlayer {
 
   /**
    * Load the ONNX model.  Call once before the first eval().
-   * Tries WebGPU first (fast, GPU-accelerated), falls back to WASM.
+   * Passes both backends to a single create() call so onnxruntime handles the
+   * fallback internally.  Using two separate create() calls is wrong: the first
+   * call internally initialises the WASM runtime; if that fails (e.g. no
+   * SharedArrayBuffer yet), the second call reports "previous initWasm() failed"
+   * even though SharedArrayBuffer may now be available.
    */
   async load(modelUrl: string): Promise<void> {
-    // Try WebGPU (Chrome 113+, Android Chrome, newer Safari)
-    try {
-      this.session = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['webgpu'],
-      });
-      console.log('[OnnxPlayer] Using WebGPU backend');
-      return;
-    } catch (_e) {
-      // WebGPU not available
-    }
-
-    // Fall back to multi-threaded WASM
-    try {
-      this.session = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm'],
-      });
-      console.log('[OnnxPlayer] Using WASM backend');
-    } catch (e) {
+    this.session = await ort.InferenceSession.create(modelUrl, {
+      // ort tries backends in order: WebGPU (GPU-accelerated) → WASM (CPU fallback).
+      executionProviders: ['webgpu', 'wasm'],
+    }).catch((e) => {
       throw new Error(`Failed to load ONNX model from ${modelUrl}: ${e}`);
-    }
+    });
+    const backend = (this.session as unknown as { handler: { constructor: { name: string } } })
+      .handler.constructor.name.toLowerCase().includes('webgpu') ? 'WebGPU' : 'WASM';
+    console.log(`[OnnxPlayer] Using ${backend} backend`);
   }
 
   /**
