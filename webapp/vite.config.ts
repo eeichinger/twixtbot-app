@@ -5,28 +5,13 @@ export default defineConfig({
   base: '/twixtbot-app/',
   plugins: [
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'model.onnx'],
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,mjs}'],
-        // Don't inline model.onnx in precache manifest (too large for revision hash);
-        // use runtime CacheFirst instead.
-        additionalManifestEntries: [],
-        runtimeCaching: [
-          {
-            urlPattern: /model\.onnx$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'twixt-model-cache',
-              expiration: { maxAgeSeconds: 30 * 24 * 60 * 60 },
-            },
-          },
-          {
-            urlPattern: /\.wasm$/,
-            handler: 'CacheFirst',
-            options: { cacheName: 'twixt-wasm-cache' },
-          },
-        ],
       },
       manifest: {
         name: 'TwixT vs AI',

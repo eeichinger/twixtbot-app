@@ -10,27 +10,15 @@
   <link rel="apple-touch-icon" href="/icons/192.png" />
   <title>TwixT vs AI</title>
   <!--
-    Register the COI service worker before any module loads so that
-    SharedArrayBuffer is available when onnxruntime-web initialises WASM.
-    On hosts without COOP/COEP headers (GitHub Pages) the SW injects them.
-    On first visit the page reloads once after the SW activates.
+    When the service worker takes control for the first time (or updates),
+    reload so the navigation itself goes through the SW and receives the
+    COOP/COEP headers it injects (needed for SharedArrayBuffer / WASM).
   -->
   <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('%BASE_URL%coi-serviceworker.js').then(function(reg) {
-        if (crossOriginIsolated) return; // Already isolated — nothing to do.
-        // Wait for the SW to finish installing/activating, then reload so the
-        // navigation request itself goes through the SW (needed for COOP/COEP).
-        var pending = reg.installing || reg.waiting;
-        if (pending) {
-          pending.addEventListener('statechange', function() {
-            if (this.state === 'activated') location.reload();
-          });
-        } else {
-          // SW already active but page not yet isolated — force reload.
-          location.reload();
-        }
-      });
+    if ('serviceWorker' in navigator && !crossOriginIsolated) {
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        location.reload();
+      }, { once: true });
     }
   </script>
   <link rel="stylesheet" href="/src/style.css" />
