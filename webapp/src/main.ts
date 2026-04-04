@@ -21,7 +21,7 @@ const AI_COLOR    = WHITE;
 
 const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
 const THINK_TIME_KEY     = 'twixt-think-time-sec';
-const DEFAULT_THINK_TIME = 25;
+const DEFAULT_THINK_TIME = 10;  // 25s caused ~30s total worker CPU → iOS kills page
 
 function getThinkTimeSec(): number {
   const stored = parseInt(localStorage.getItem(THINK_TIME_KEY) ?? '', 10);
@@ -73,6 +73,7 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'error') {
+      clearAiMoveTimer();
       console.error('[Worker]', msg.message);
       $loadingMsg.textContent = `Error: ${msg.message}`;
     }

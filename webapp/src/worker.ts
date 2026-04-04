@@ -35,7 +35,8 @@ const MAX_TRIALS = 100_000;  // effectively unlimited; time limit is the real co
 
 let player: OnnxPlayer | null = null;
 let mcts:   NeuralMCTS | null = null;
-let defaultTimeLimitMs = 25_000;
+let defaultTimeLimitMs = 10_000;
+let isProcessing = false;
 
 self.onmessage = async (e: MessageEvent) => {
   const msg = e.data;
@@ -62,6 +63,11 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ type: 'error', message: 'Worker not initialised' });
       return;
     }
+    if (isProcessing) {
+      self.postMessage({ type: 'error', message: 'Worker busy' });
+      return;
+    }
+    isProcessing = true;
     const { policyIndexToPoint } = await import('./naf.js');
 
     /** Pick the best move from a Float64Array of scores (visit counts or priors). */
@@ -126,6 +132,8 @@ self.onmessage = async (e: MessageEvent) => {
       }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err) });
+    } finally {
+      isProcessing = false;
     }
 
   } else if (msg.type === 'abort') {
