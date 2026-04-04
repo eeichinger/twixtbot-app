@@ -86,6 +86,15 @@ self.onmessage = async (e: MessageEvent) => {
       const game = replayHistory(history);
       const turn = game.turn;
 
+      // Heartbeat: every 2s send a ping to main thread so it can confirm
+      // the worker is still alive. Pings stop when MCTS finishes or is killed.
+      let pingCount = 0;
+      const pingStart = Date.now();
+      const pingId = setInterval(() => {
+        pingCount++;
+        self.postMessage({ type: 'ping', elapsed: Date.now() - pingStart, iterations: pingCount });
+      }, 2000);
+
       // Hard-deadline timer: fires between await yields if the internal
       // Date.now() check somehow doesn't stop the loop in time.
       // This is the second line of defence after the mcts.ts deadline.
@@ -114,10 +123,10 @@ self.onmessage = async (e: MessageEvent) => {
       try {
         result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs) as Float64Array | { x: number; y: number };
       } finally {
-        // Always cancel the hard deadline — whether mcts returned normally,
-        // threw, or was interrupted.  Without this, the timer can fire after
-        // the move handler exits and access stale closure state.
+        // Always cancel the timers — whether mcts returned normally,
+        // threw, or was interrupted.
         clearTimeout(hardDeadlineId);
+        clearInterval(pingId);
       }
 
       if (!resultSent && result !== null) {
