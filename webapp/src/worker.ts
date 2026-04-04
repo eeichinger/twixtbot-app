@@ -120,6 +120,7 @@ self.onmessage = async (e: MessageEvent) => {
       }, timeLimitMs);
 
       let result: Float64Array | { x: number; y: number } | null = null;
+      const moveStart = Date.now();
       try {
         result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs) as Float64Array | { x: number; y: number };
       } finally {
@@ -127,6 +128,10 @@ self.onmessage = async (e: MessageEvent) => {
         // threw, or was interrupted.
         clearTimeout(hardDeadlineId);
         clearInterval(pingId);
+        // Notify main thread that MCTS has fully finished. If this fires AFTER
+        // the main thread already received 'result' (via the hard deadline), it
+        // means the worker was still running WASM compute during the human turn.
+        self.postMessage({ type: 'computing-done', elapsed: Date.now() - moveStart });
       }
 
       if (!resultSent && result !== null) {
