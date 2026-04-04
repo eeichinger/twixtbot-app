@@ -33,9 +33,12 @@
 
       <!-- Diagnostic log overlay (hidden by default, tap version 3× to toggle) -->
       <div id="diag-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#00ff88;font-size:11px;font-family:monospace;padding:8px;z-index:9999;touch-action:pan-y">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <strong>Diagnostics</strong>
-          <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
+          <div style="display:flex;gap:6px">
+            <button id="diag-share-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Share</button>
+            <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
+          </div>
         </div>
         <div id="diag-log-prev" style="color:#aaa;border-bottom:1px solid #444;margin-bottom:4px;padding-bottom:4px"></div>
         <div id="diag-log-cur"></div>

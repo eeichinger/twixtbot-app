@@ -113,6 +113,28 @@ function diagInit(): void {
     });
   }
 
+  // Share button — opens native share sheet on iOS; falls back to clipboard elsewhere
+  document.getElementById('diag-share-btn')?.addEventListener('click', async () => {
+    try {
+      const prev: string[] = JSON.parse(localStorage.getItem(DIAG_PREV_KEY) || '[]');
+      const cur:  string[] = JSON.parse(localStorage.getItem(DIAG_KEY)      || '[]');
+      const lines: string[] = [];
+      if (prev.length) { lines.push('=== PREVIOUS SESSION ==='); lines.push(...prev); }
+      lines.push('=== CURRENT SESSION ===');
+      lines.push(...cur);
+      const text = lines.join('\n');
+      const btn = document.getElementById('diag-share-btn') as HTMLButtonElement;
+      if (navigator.share) {
+        await navigator.share({ title: 'TwixtBot Diagnostics', text });
+        btn.textContent = 'Shared!';
+      } else {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied!';
+      }
+      setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+    } catch { /* user dismissed share sheet or clipboard unavailable */ }
+  });
+
   // Clear button
   document.getElementById('diag-clear-btn')?.addEventListener('click', () => {
     try { localStorage.removeItem(DIAG_KEY); localStorage.removeItem(DIAG_PREV_KEY); } catch { /* ignore */ }
