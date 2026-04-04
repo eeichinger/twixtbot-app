@@ -86,7 +86,7 @@ Full rules: https://en.wikipedia.org/wiki/TwixT
 
 ## Attribution
 
-This project is a fork of [**twixtbot**](https://github.com/jlampe/twixtbot) by
+This project is a fork of [**twixtbot**](https://github.com/BonyJordan/twixtbot) by
 **Jordan Lampe** (MIT License, 2019). The original project is a Python 2 +
 TensorFlow 1.12 command-line AI that uses MCTS and a convolutional neural network
 trained by self-play. The trained model weights (`models/six-917000`) and the core
