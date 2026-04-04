@@ -123,7 +123,9 @@ html, body {
   cursor: pointer;   /* required for iOS Safari to dispatch pointer/touch events on canvas */
 }
 
-/* Thinking overlay */
+/* Thinking overlay — no backdrop-filter: iOS Safari retains the GPU
+   compositing layer even after display:none, causing a GPU-OOM crash
+   a few seconds after the overlay disappears. Plain opaque background instead. */
 #thinking-overlay {
   position: absolute;
   inset: 0;
@@ -132,8 +134,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  background: rgba(240,244,248,0.80);
-  backdrop-filter: blur(2px);
+  background: rgba(240,244,248,0.88);
   color: var(--text);
   font-size: 0.95rem;
   pointer-events: none;
@@ -148,8 +149,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 24px;
-  background: rgba(240,244,248,0.92);
-  backdrop-filter: blur(4px);
+  background: rgba(240,244,248,0.95);
 }
 
 #gameover-msg {

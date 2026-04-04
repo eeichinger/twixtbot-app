@@ -104,10 +104,17 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }, timeLimitMs);
 
-      const result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs);
-      clearTimeout(hardDeadlineId);
+      let result: Float64Array | { x: number; y: number } | null = null;
+      try {
+        result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs) as Float64Array | { x: number; y: number };
+      } finally {
+        // Always cancel the hard deadline — whether mcts returned normally,
+        // threw, or was interrupted.  Without this, the timer can fire after
+        // the move handler exits and access stale closure state.
+        clearTimeout(hardDeadlineId);
+      }
 
-      if (!resultSent) {
+      if (!resultSent && result !== null) {
         resultSent = true;
         let moveMsg: MoveMsg;
         if (result instanceof Float64Array) {
