@@ -361,6 +361,7 @@ function onHumanMove(p: { x: number; y: number }): void {
 
   if (gameMode === 'pvp') {
     // Other human player takes over.
+    board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     startHeartbeat();
   } else {
@@ -465,6 +466,7 @@ function startNewGame(): void {
     requestAiMove();
   } else {
     // PvP: WHITE (first mover) takes the first turn.
+    board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     startHeartbeat();
   }
