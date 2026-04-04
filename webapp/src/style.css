@@ -45,6 +45,32 @@ html, body {
   margin-top: -12px;
 }
 
+/* Mode selector toggle on intro screen */
+#mode-selector {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: -8px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
 #start-btn {
   margin-top: 8px;
   padding: 14px 40px;

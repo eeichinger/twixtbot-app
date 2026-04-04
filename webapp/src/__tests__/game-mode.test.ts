@@ -1,0 +1,110 @@
+/**
+ * game-mode.test.ts — unit tests for game-mode.ts helpers.
+ *
+ * All helpers are pure functions (no DOM, no worker), so these tests run in
+ * the standard Vitest node environment without any special setup.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { BLACK, WHITE } from '../twixt.js';
+import {
+  isHumanTurn,
+  turnStatusText,
+  defaultSubtitle,
+  resultMessage,
+} from '../game-mode.js';
+
+// -------------------------------------------------------------------------
+// isHumanTurn
+// -------------------------------------------------------------------------
+
+describe('isHumanTurn — PvP mode', () => {
+  it('returns true when it is WHITE\'s turn', () => {
+    expect(isHumanTurn(WHITE, 'pvp')).toBe(true);
+  });
+
+  it('returns true when it is BLACK\'s turn', () => {
+    expect(isHumanTurn(BLACK, 'pvp')).toBe(true);
+  });
+});
+
+describe('isHumanTurn — PvC mode', () => {
+  it('returns false when it is WHITE\'s turn (WHITE is AI)', () => {
+    expect(isHumanTurn(WHITE, 'pvc')).toBe(false);
+  });
+
+  it('returns true when it is BLACK\'s turn (BLACK is human)', () => {
+    expect(isHumanTurn(BLACK, 'pvc')).toBe(true);
+  });
+});
+
+// -------------------------------------------------------------------------
+// turnStatusText
+// -------------------------------------------------------------------------
+
+describe('turnStatusText — PvP mode', () => {
+  it('shows "White\'s turn" when WHITE is to move', () => {
+    expect(turnStatusText(WHITE, 'pvp')).toBe("White's turn");
+  });
+
+  it('shows "Black\'s turn" when BLACK is to move', () => {
+    expect(turnStatusText(BLACK, 'pvp')).toBe("Black's turn");
+  });
+});
+
+describe('turnStatusText — PvC mode', () => {
+  it('always shows the human-turn message regardless of whose turn it is', () => {
+    expect(turnStatusText(BLACK, 'pvc')).toBe('Your turn (Black)');
+    // In PvC this function is only called when it genuinely is the human's
+    // turn, but the output should be consistent regardless.
+    expect(turnStatusText(WHITE, 'pvc')).toBe('Your turn (Black)');
+  });
+});
+
+// -------------------------------------------------------------------------
+// defaultSubtitle
+// -------------------------------------------------------------------------
+
+describe('defaultSubtitle', () => {
+  it('returns "vs Computer" for PvC mode', () => {
+    expect(defaultSubtitle('pvc')).toBe('vs Computer');
+  });
+
+  it('returns "vs Player" for PvP mode', () => {
+    expect(defaultSubtitle('pvp')).toBe('vs Player');
+  });
+});
+
+// -------------------------------------------------------------------------
+// resultMessage
+// -------------------------------------------------------------------------
+
+describe('resultMessage — draw', () => {
+  it('returns "Draw" in PvC mode', () => {
+    expect(resultMessage(null, 'pvc')).toBe('Draw');
+  });
+
+  it('returns "Draw" in PvP mode', () => {
+    expect(resultMessage(null, 'pvp')).toBe('Draw');
+  });
+});
+
+describe('resultMessage — BLACK wins', () => {
+  it('returns "You win!" in PvC mode (human is BLACK)', () => {
+    expect(resultMessage(BLACK, 'pvc')).toBe('You win!');
+  });
+
+  it('returns "Black wins!" in PvP mode', () => {
+    expect(resultMessage(BLACK, 'pvp')).toBe('Black wins!');
+  });
+});
+
+describe('resultMessage — WHITE wins', () => {
+  it('returns "AI wins" in PvC mode (AI is WHITE)', () => {
+    expect(resultMessage(WHITE, 'pvc')).toBe('AI wins');
+  });
+
+  it('returns "White wins!" in PvP mode', () => {
+    expect(resultMessage(WHITE, 'pvp')).toBe('White wins!');
+  });
+});

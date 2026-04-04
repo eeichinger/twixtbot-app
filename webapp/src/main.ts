@@ -2,28 +2,32 @@
  * main.ts — App shell and game loop.
  *
  * Manages:
- *   - Worker lifecycle (init, move requests)
- *   - Game state (human is BLACK, AI is WHITE)
+ *   - Worker lifecycle (init, move requests) — PvC mode only
+ *   - Game state (human is BLACK, AI is WHITE in PvC; both human in PvP)
  *   - UI state (loading, thinking, game-over)
+ *   - Game mode selection (PvC vs PvP)
  */
 
 import { Game, pt, WHITE, BLACK } from './twixt.js';
 import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
+import {
+  loadGameMode, saveGameMode,
+  isHumanTurn, turnStatusText, defaultSubtitle, resultMessage,
+  type GameMode,
+} from './game-mode.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-h';
+const APP_VERSION = '2026-04-05-a';
 
 // -------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------
 
 const MODEL_URL   = import.meta.env.BASE_URL + 'model.onnx';
-const HUMAN_COLOR = BLACK;
-const AI_COLOR    = WHITE;
 
 const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
 const THINK_TIME_KEY     = 'twixt-think-time-sec';
@@ -185,16 +189,16 @@ function stopHeartbeat(): void {
 // DOM references
 // -------------------------------------------------------------------------
 
-const $introScreen    = document.getElementById('intro-screen')!;
-const $loadingScreen  = document.getElementById('loading-screen')!;
-const $gameScreen     = document.getElementById('game-screen')!;
-const $statusText     = document.getElementById('status-text')!;
+const $introScreen     = document.getElementById('intro-screen')!;
+const $loadingScreen   = document.getElementById('loading-screen')!;
+const $gameScreen      = document.getElementById('game-screen')!;
+const $statusText      = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
-const $loadingMsg     = document.getElementById('loading-msg')!;
-const $undoBtn          = document.getElementById('undo-btn')!;
-const $newGameBtn       = document.getElementById('new-game-btn')!;
-const $thinkTimeSelect  = document.getElementById('think-time-select') as HTMLSelectElement;
-const boardCanvas     = document.getElementById('board-canvas') as HTMLCanvasElement;
+const $loadingMsg      = document.getElementById('loading-msg')!;
+const $undoBtn         = document.getElementById('undo-btn')!;
+const $newGameBtn      = document.getElementById('new-game-btn')!;
+const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
+const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
 
 // -------------------------------------------------------------------------
 // State
@@ -210,9 +214,23 @@ let userClickedStart = false;
 let gameOver = false;
 let aiThinking = false;
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
+let gameMode: GameMode = loadGameMode();
 
 // -------------------------------------------------------------------------
-// Worker bridge
+// UI helpers
+// -------------------------------------------------------------------------
+
+/** Show/hide the think-time selector based on the current game mode. */
+function syncThinkTimeVisibility(): void {
+  if (gameMode === 'pvc') {
+    $thinkTimeSelect.classList.remove('hidden');
+  } else {
+    $thinkTimeSelect.classList.add('hidden');
+  }
+}
+
+// -------------------------------------------------------------------------
+// Worker bridge (PvC only)
 // -------------------------------------------------------------------------
 
 type MoveMsg = { x: number; y: number } | 'swap';
@@ -233,8 +251,6 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'computing-done') {
-      // Worker's MCTS fully finished (may be AFTER result was already sent by hard deadline).
-      // Tells us the worker was still running computation during the human turn.
       diagLog(`worker-computing-done elapsed=${msg.elapsed}ms`);
     } else if (msg.type === 'error') {
       diagLog(`worker-error: ${msg.message}`);
@@ -322,7 +338,8 @@ function onWorkerReady(): void {
 }
 
 function onHumanMove(p: { x: number; y: number }): void {
-  if (gameOver || aiThinking || game.turn !== HUMAN_COLOR) return;
+  if (gameOver || aiThinking) return;
+  if (!isHumanTurn(game.turn, gameMode)) return;
   if (!game.legalPlays().contains(p)) return;
 
   diagLog(`human-move x=${p.x} y=${p.y}`);
@@ -331,15 +348,24 @@ function onHumanMove(p: { x: number; y: number }): void {
   board.setGame(game, false);
 
   if (game.justWon()) {
-    endGame('You win!');
+    // The player who just moved won: turn has already switched to the next player,
+    // so the winner is the opposite of game.turn.
+    const winner = game.turn === WHITE ? BLACK : WHITE;
+    endGame(resultMessage(winner, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
-    endGame('Draw');
+    endGame(resultMessage(null, gameMode));
     return;
   }
 
-  requestAiMove();
+  if (gameMode === 'pvp') {
+    // Other human player takes over.
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    startHeartbeat();
+  } else {
+    requestAiMove();
+  }
 }
 
 function onAiMove(moveMsg: MoveMsg): void {
@@ -352,11 +378,11 @@ function onAiMove(moveMsg: MoveMsg): void {
   board.setGame(game, true);
 
   if (game.justWon()) {
-    endGame('AI wins');
+    endGame(resultMessage(WHITE, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
-    endGame('Draw');
+    endGame(resultMessage(null, gameMode));
     return;
   }
 
@@ -366,21 +392,33 @@ function onAiMove(moveMsg: MoveMsg): void {
   worker.terminate();
   workerAlive = false;
   diagLog('worker-terminated (freeing memory for human turn)');
-  $statusText.textContent = 'Your turn (Black)';
+  $statusText.textContent = turnStatusText(BLACK, gameMode);
   startHeartbeat();  // monitor JS suspension during human turn
 }
 
 function onUndoClick(): void {
   if (gameOver || aiThinking) return;
-  if (game.history.length >= 2) {
-    game.undo();
-    game.undo();
-    board.setGame(game, true);
-    $statusText.textContent = 'Your turn (Black)';
-  } else if (game.history.length === 1) {
-    game.undo();
-    board.setGame(game, true);
-    $statusText.textContent = 'Your turn (Black)';
+
+  if (gameMode === 'pvp') {
+    // PvP: undo exactly 1 move (the last player's move).
+    if (game.history.length >= 1) {
+      game.undo();
+      board.setGame(game, false);
+      $statusText.textContent = turnStatusText(game.turn, gameMode);
+    }
+  } else {
+    // PvC: undo the human move + the preceding AI move together, so it's
+    // always the human's turn after undo.
+    if (game.history.length >= 2) {
+      game.undo();
+      game.undo();
+      board.setGame(game, true);
+      $statusText.textContent = turnStatusText(BLACK, gameMode);
+    } else if (game.history.length === 1) {
+      game.undo();
+      board.setGame(game, true);
+      $statusText.textContent = turnStatusText(BLACK, gameMode);
+    }
   }
 }
 
@@ -398,7 +436,7 @@ function showIntro(result?: string): void {
   userClickedStart = false;
   setThinking(false);
   const subtitleEl = document.getElementById('intro-subtitle');
-  if (subtitleEl) subtitleEl.textContent = result ?? 'vs AI';
+  if (subtitleEl) subtitleEl.textContent = result ?? defaultSubtitle(gameMode);
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement | null;
   if (startBtn) startBtn.textContent = result ? 'Play Again' : 'Start Game';
   $gameScreen.classList.add('hidden');
@@ -407,7 +445,7 @@ function showIntro(result?: string): void {
 }
 
 function startNewGame(): void {
-  diagLog('new-game-start');
+  diagLog(`new-game-start mode=${gameMode}`);
   stopHeartbeat();
   clearAiMoveTimer();
   // Only terminate if AI was mid-move; otherwise reuse the loaded worker.
@@ -421,7 +459,15 @@ function startNewGame(): void {
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
   board.setGame(game, false);
-  requestAiMove();
+  syncThinkTimeVisibility();
+
+  if (gameMode === 'pvc') {
+    requestAiMove();
+  } else {
+    // PvP: WHITE (first mover) takes the first turn.
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    startHeartbeat();
+  }
 }
 
 function endGame(msg: string): void {
@@ -498,10 +544,42 @@ function init(): void {
   $undoBtn.addEventListener('click',    onUndoClick);
   $newGameBtn.addEventListener('click', () => showIntro());
 
-  // Start button: hide intro, begin game (or show loading if model not ready yet).
+  // Mode selector buttons on intro screen
+  document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      gameMode = btn.dataset.mode as GameMode;
+      saveGameMode(gameMode);
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Update subtitle to the mode default (clears any previous game result text).
+      const sub = document.getElementById('intro-subtitle');
+      if (sub) sub.textContent = defaultSubtitle(gameMode);
+      syncThinkTimeVisibility();
+      // Pre-load AI model when user switches to PvC (if not already loading/loaded).
+      if (gameMode === 'pvc' && !workerAlive) initWorker();
+    });
+  });
+
+  // Restore persisted mode selection visually
+  document.querySelector<HTMLButtonElement>(`.mode-btn[data-mode="${gameMode}"]`)
+    ?.classList.add('active');
+  // Sync subtitle with loaded mode
+  const sub = document.getElementById('intro-subtitle');
+  if (sub) sub.textContent = defaultSubtitle(gameMode);
+
+  // Start button: hide intro, begin game.
   document.getElementById('start-btn')?.addEventListener('click', () => {
     userClickedStart = true;
     $introScreen.classList.add('hidden');
+
+    if (gameMode === 'pvp') {
+      // PvP: no worker needed — go directly to game screen.
+      $gameScreen.classList.remove('hidden');
+      startNewGame();
+      return;
+    }
+
+    // PvC: worker must be ready (or loading).
     if (workerAlive) {
       $gameScreen.classList.remove('hidden');
       startNewGame();
@@ -511,7 +589,11 @@ function init(): void {
     }
   });
 
-  initWorker();  // begin loading model silently while intro screen is shown (userClickedStart=false)
+  diagLog(`game-mode=${gameMode}`);
+  // Pre-load AI model in PvC mode while intro screen is shown.
+  if (gameMode === 'pvc') {
+    initWorker();
+  }
 }
 
 init();
