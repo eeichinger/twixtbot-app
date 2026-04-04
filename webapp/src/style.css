@@ -86,6 +86,17 @@ html, body {
 #start-btn:hover  { opacity: 0.85; }
 #start-btn:active { opacity: 0.7; }
 
+.intro-attribution {
+  margin-top: -8px;
+  font-size: 0.7rem;
+  color: #64748b;
+  text-align: center;
+}
+.intro-attribution a {
+  color: #94a3b8;
+  text-decoration: underline;
+}
+
 /* -------------------------------------------------------------------------
    Loading screen
    ------------------------------------------------------------------------- */

@@ -1,72 +1,155 @@
-# twixtbot
-Code for AI to play the board game Twixt
+# TwixT vs AI
 
-# Requirements 
-The code is written with tensorflow 1.12 and python2 and runs on linux.
-I know all the cool kids use tensorflow 2.2 and python3 nowadays.  Sorry!
+A Progressive Web App (PWA) that lets you play the board game **TwixT** against a
+neural-network AI — or against another human on the same device — directly in your
+mobile browser, with no installation required.
 
-# How to Play!
-Um... so the bad news is there is nothing plug-n-play here.  Maybe some
-enterprising soul can turn this into an app that someone who doesn't
-want to fight with code can just turn on and play.  What I can give
-you is the brief outline.
+**Play now:** https://eeichinger.github.io/twixtbot-app/
 
-I first run a `nns.py` (Neural Net Server) with
+---
+
+## How to Play
+
+### Open the app
+
+Navigate to https://eeichinger.github.io/twixtbot-app/ in your browser.
+The app loads entirely offline after the first visit.
+
+### Install as a PWA (optional)
+
+- **iOS Safari:** tap the Share button → "Add to Home Screen"
+- **Android Chrome:** tap the three-dot menu → "Add to Home Screen" / "Install app"
+- **Desktop Chrome/Edge:** click the install icon in the address bar
+
+Once installed, the app works offline and launches like a native app.
+
+### Choose a game mode
+
+| Mode | Description |
+|------|-------------|
+| **vs Computer** | You play Black; the AI plays White |
+| **vs Player** | Two humans take turns on the same screen |
+
+Tap **Start Game** to begin.
+
+### Making moves
+
+- **Tap** any empty intersection to place your peg
+- On touch screens, **drag** your finger to preview the peg before placing — release to confirm
+- Bridges (links) between your pegs are drawn automatically when they are valid
+
+### In-game controls
+
+| Control | Action |
+|---------|--------|
+| **Undo** | Undo your last move (in vs-Computer mode, undoes both your move and the AI's) |
+| **AI move** | Let the AI play your move for you (vs-Computer mode only) |
+| **Think time selector** | Set how long the AI thinks: 5 s / 10 s / 30 s / 60 s |
+| **New** | Return to the title screen |
+
+### AI think time
+
+More time = stronger play. The default is 10 seconds. On slower devices or if you
+prefer a faster game, 5 seconds still produces strong moves.
+
+---
+
+## TwixT — Brief Rules
+
+TwixT is a two-player connection game played on a 24×24 grid.
+
+- **Black** connects top ↔ bottom; **White** connects left ↔ right
+- Players take turns placing one peg per turn on any empty intersection
+- After placing a peg, bridges (knight's-move links) are automatically added to all
+  friendly pegs they can reach, provided no existing bridge would cross them
+- **Swap rule:** White may swap the first Black move instead of placing a new peg
+  (makes the opening fair regardless of which colour moves first)
+- The first player to connect their two opposite borders wins
+- Bridges cannot cross — this creates the tactical tension of the game
+
+Full rules: https://en.wikipedia.org/wiki/TwixT
+
+---
+
+## Features
+
+- Neural-network AI powered by MCTS (Monte Carlo Tree Search) + ONNX Runtime
+- Fully offline after first load (Service Worker + PWA)
+- Works on iOS Safari, Android Chrome, and desktop browsers
+- Touch drag-to-preview peg placement
+- "AI move" hint button — delegate any move to the AI
+- Adjustable AI think time (5 s – 60 s)
+- Player vs Player mode for two humans on one screen
+- Installable as a home-screen app (no App Store required)
+
+---
+
+## Attribution
+
+This project is a fork of [**twixtbot**](https://github.com/jlampe/twixtbot) by
+**Jordan Lampe** (MIT License, 2019). The original project is a Python 2 +
+TensorFlow 1.12 command-line AI that uses MCTS and a convolutional neural network
+trained by self-play. The trained model weights (`models/six-917000`) and the core
+game logic (`src/twixt.py`) originate from Jordan's work.
+
+The entire PWA — TypeScript port of the game logic, MCTS engine, ONNX Runtime Web
+integration, Service Worker, Canvas UI, touch controls, iOS memory optimisations,
+and diagnostic tooling — was designed and built by
+[**Claude**](https://claude.ai) (Anthropic's AI assistant).
+
+---
+
+## Developer Notes
+
+### Local development
+
+```bash
+cd webapp
+npm install
+npm run dev        # Vite dev server at http://localhost:5173
 ```
-./nns.py -m ../models/six-917000 -l /tmp/loc1 > out1 2>&1 &
+
+### Production build
+
+```bash
+cd webapp
+npm run build      # Output in webapp/dist/
 ```
 
-Here `-m` gives us a pointer to the TensorFlow model, I have given you
-my best one.  As we have seen from results on Little Golem, it can
-probably be improved with more training and/or a bigger net.  `-l` is
-the "location" which is a combination unix socket and shared memory.
+The `prebuild` script copies the required ONNX Runtime WASM files into `public/`
+automatically.
 
-Now, if you want to get a smart move, you use the magic `one.py` program,
-example:
+### Project structure
+
 ```
-./one.py -m v19,r19,t18,p13,n13,m9,i9,k17 -t asn_player:trials=50000,location=/tmp/loc1 -T
+src/               Original Python/TensorFlow bot (Jordan Lampe)
+models/            Trained TF1 model weights
+webapp/            TypeScript PWA (built by Claude)
+  src/
+    main.ts        App shell, game loop, worker lifecycle
+    twixt.ts       Game logic (ported from src/twixt.py)
+    mcts.ts        MCTS engine
+    onnx-player.ts ONNX Runtime wrapper
+    worker.ts      Web Worker (runs MCTS + inference off main thread)
+    ui.ts          Canvas board renderer + touch/pointer input
+    sw.ts          Service Worker (offline caching + COOP/COEP headers)
+    naf.ts         Position -> model input tensor encoding
+    game-mode.ts   Game mode helpers
+docs/              Architecture and research notes
 ```
 
-Here `-m` gives a list of comma separated moves (`swap` is a legal move too),
-`-t` tells us what thinker we want to use.  `asn_player` is the Asynchronous
-Net Player (I use `nnmplayer` for training runs), and `trials` is the amount
-of time to spend; on my computer it takes approximately 1 minute per 10000
-trials.  Even a very low number like 200 gives quite a strong opponent and
-is much faster.  `location` you will recall from the `nns.py` command.
+### Architecture notes
 
-# Other files
-I don't remember what all of these do.  The biggies are:
-- `battle.py` which you use if you want to test two nets or configurations
-    against each other
-- `bcount.py` which is nice if you use `battle.py` in conjunction with `pmany.py`
-- `mkbig.py` creates a raw, untrained net
-- `naf.py` is a bunch of code to convert twixt positions to numpy arrays and back
-- `nnclient.py`, `nns.py`, `smmppy.py` - these three files work together
-    to create a "neural net server".  This is especially useful during
-    the part of training where you are self-playing, because it is
-    important both to batch up your queries and also python sucks at
-    threading.
-- `nnmcts.py`, `nnmplayer.py` - these two files work together to make the
-    synchronous player.  Note you can use `nnmplayer` with `one` or `battle`
-    with the `model:` option if you don't want to set up a `nns` server.
-- `one.py` - as explained above, this is great if you want a bot player
-    to give you a single move.
-- `pmany.py` - a super handy python script to let you run a zillion copies
-    of the same program.  For example, during self-play what I do is set
-    up a single `nns.py` and then around 80 `battle.py` with `nnmplayer`
-    bots set to add 25% random noise (as per the Alpha Go stuff) all
-    connecting to the same server.
-- `swapmodel.py` - instead of writing code to MCTS the swap rule, I just
-    played the bot against itself a few hundred times with each starting
-    move, figured out whether white or black wins, fit a (almost) linear
-    model to it, and there you go.
-- `train.py` - runs a round or two of training on the neural net.
-- `twixt.py` - `twixt.Game` is a super handy class for representing the
-    state of a game of twixt.
-- `scripts` - ugh, I barely remember what any of these do.  You can see
-    some stuff relating to AWS; what I'd do is rent several of the cheapest
-    possible box with a GPU on it, run self-play games, and then download
-    the output of those games to my home computer with manly GPUs to run
-    actual training.
-- `web` - believe it or not, this is an almost working web page where you
-    can just come in and play a game of twixt against the bot.
+See [`CLAUDE.md`](CLAUDE.md) for detailed notes on:
+- ONNX Runtime WASM binary selection (critical for iOS)
+- iOS memory management and the deferred-kill problem
+- Service Worker COOP/COEP header injection
+- Diagnostic logging system
+- AI improvement ideas
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).  
+Original twixtbot copyright © 2019 Jordan Lampe.
