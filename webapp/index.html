@@ -10,19 +10,7 @@
   <link rel="apple-touch-icon" href="/icons/192.png" />
   <title>TwixT vs AI</title>
 
-  <!--
-    When the service worker takes control for the first time (or updates),
-    reload so the navigation itself goes through the SW and receives the
-    COOP/COEP headers it injects (needed for SharedArrayBuffer / WASM).
-  -->
-  <script>
-    if ('serviceWorker' in navigator && !crossOriginIsolated) {
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        location.reload();
-      }, { once: true });
-    }
-  </script>
-  <link rel="stylesheet" href="/src/style.css" />
+<link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="app">

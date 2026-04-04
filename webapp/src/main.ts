@@ -153,8 +153,8 @@ function startNewGame(): void {
   game = new Game();
   $gameoverOverlay.classList.add('hidden');
   $thinkingOverlay.classList.add('hidden');
-  board.setGame(game, true);
-  $statusText.textContent = 'Your turn (Black)';
+  board.setGame(game, false);  // AI (WHITE) moves first; board disabled until then
+  requestAiMove();
 }
 
 function endGame(msg: string): void {
