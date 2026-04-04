@@ -338,4 +338,4 @@ This pattern is consistently observed in logs as multiple rapid
 | `2026-04-04-e` | Roll back to -b + extended diagnostics | Confirmed deferred-kill pattern; `worker-computing-done` added |
 | `2026-04-04-f` | Intro screen + return to intro after game end | UX improvement |
 | `2026-04-04-g` | Terminate worker after each AI move (fixed) | Confirms deferred-kill — crash still happens after termination |
-| `2026-04-04-h` | Switch to `onnxruntime-web/wasm` (12MB binary); `enableCpuMemArena: false` | Awaiting test results |
+| `2026-04-04-h` | Switch to `onnxruntime-web/wasm` (12MB binary); `enableCpuMemArena: false` | **FIXED** — game runs stably on iOS. The combination of halving the WASM binary (24MB JSEP → 12MB standard) and disabling the memory arena eliminated the peak memory that was triggering the deferred OS kill. |
