@@ -15,7 +15,7 @@ import { BoardUI } from './ui.js';
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-f';
+const APP_VERSION = '2026-04-04-g';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -361,6 +361,11 @@ function onAiMove(moveMsg: MoveMsg): void {
   }
 
   diagLog('human-turn-start');
+  // Free WASM heap during human turn — iOS kills the page if ~300MB stays allocated.
+  // Worker will be restarted in requestAiMove() when the human makes their move.
+  worker.terminate();
+  workerAlive = false;
+  diagLog('worker-terminated (freeing memory for human turn)');
   $statusText.textContent = 'Your turn (Black)';
   startHeartbeat();  // monitor JS suspension during human turn
 }
@@ -399,8 +404,6 @@ function showIntro(result?: string): void {
   $gameScreen.classList.add('hidden');
   $loadingScreen.classList.add('hidden');
   $introScreen.classList.remove('hidden');
-  // Re-arm worker silently for the next game if not already alive
-  if (!workerAlive) initWorker();
 }
 
 function startNewGame(): void {
