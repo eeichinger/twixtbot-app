@@ -15,7 +15,7 @@ import { BoardUI } from './ui.js';
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-b';
+const APP_VERSION = '2026-04-04-c';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -27,7 +27,7 @@ const AI_COLOR    = WHITE;
 
 const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
 const THINK_TIME_KEY     = 'twixt-think-time-sec';
-const DEFAULT_THINK_TIME = 10;  // 25s caused ~30s total worker CPU → iOS kills page
+const DEFAULT_THINK_TIME = 10;
 
 function getThinkTimeSec(): number {
   const stored = parseInt(localStorage.getItem(THINK_TIME_KEY) ?? '', 10);
@@ -201,18 +201,17 @@ function clearAiMoveTimer(): void {
 }
 
 /** Called when the worker doesn't respond within the timeout budget.
- *  Plays a random legal move so the game can continue, then restarts the worker. */
+ *  Terminates the worker, plays a random legal move, then lets requestAiMove()
+ *  restart the worker when the human takes their next turn. */
 function onAiMoveTimeout(): void {
   diagLog('watchdog-fired — worker did not respond; playing fallback move');
   aiMoveTimer = null;
   if (!aiThinking || gameOver) return;
-  console.warn('[Main] AI worker timed out — playing random move and restarting worker');
   const legal = game.legalPlays();
-  const fallbackMove = legal.at(Math.floor(Math.random() * legal.length));
-  // Restart the worker silently (no new game) so future AI moves work again
-  worker.terminate();
+  const fallbackMove = legal.at(Math.floor(Math.random() * legal.length))!;
+  try { worker.terminate(); } catch { /* ignore */ }
   diagLog('worker-terminated (by watchdog)');
-  initWorker(() => { diagLog('worker-restarted after watchdog'); /* game already in progress */ });
+  // onAiMove() will also call worker.terminate() — harmless on an already-terminated worker
   onAiMove({ x: fallbackMove.x, y: fallbackMove.y });
 }
 
@@ -222,18 +221,27 @@ function requestAiMove(): void {
   setThinking(true);
 
   const timeSec = getThinkTimeSec();
-  const watchdogMs = (timeSec + 15) * 1000;
+  // Extra 30s buffer on top of think time to account for model reload from SW cache (~0.6s)
+  const watchdogMs = (timeSec + 30) * 1000;
 
-  // Watchdog: if the worker is killed by iOS (or hangs) and never responds,
-  // this fires after the budget + a generous buffer and plays a fallback move.
+  // Capture history BEFORE creating the new worker so the closure is stable
+  const history: MoveMsg[] = game.history.map(m =>
+    m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
+  );
+
+  // Set watchdog before init so any init failure is also covered
   clearAiMoveTimer();
   aiMoveTimer = setTimeout(onAiMoveTimeout, watchdogMs);
   diagLog(`request-ai-move timeSec=${timeSec} watchdog=${watchdogMs}ms`);
 
-  const history: MoveMsg[] = game.history.map(m =>
-    m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
-  );
-  worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
+  // Always create a fresh worker for each move.  The previous worker was terminated
+  // in onAiMove() to immediately free its WASM heap (~300-500 MB), preventing iOS
+  // from killing the page due to memory pressure during the human turn.
+  diagLog('worker-restarting-for-move');
+  initWorker(() => {
+    diagLog('worker-ready-sending-move');
+    worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -267,6 +275,12 @@ function onHumanMove(p: { x: number; y: number }): void {
 }
 
 function onAiMove(moveMsg: MoveMsg): void {
+  // Terminate the worker IMMEDIATELY to free its WASM heap (~300-500 MB).
+  // This prevents iOS from killing the page due to memory pressure during
+  // the human turn.  The worker will be re-created in requestAiMove().
+  try { worker.terminate(); } catch { /* already terminated — ignore */ }
+  diagLog('worker-terminated-post-move (freed WASM heap)');
+
   aiThinking = false;
   setThinking(false);
   if (gameOver) return;
@@ -305,6 +319,9 @@ function onUndoClick(): void {
 
 function startNewGame(): void {
   diagLog('new-game-start');
+  // Cancel any pending watchdog and kill any in-flight worker before resetting state
+  clearAiMoveTimer();
+  try { if (worker) worker.terminate(); } catch { /* ignore */ }
   gameOver   = false;
   aiThinking = false;
   game = new Game();
