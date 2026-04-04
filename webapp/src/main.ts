@@ -54,6 +54,7 @@ let board: BoardUI;
 let worker: Worker;
 let gameOver = false;
 let aiThinking = false;
+let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
 // -------------------------------------------------------------------------
 // Worker bridge
@@ -61,14 +62,15 @@ let aiThinking = false;
 
 type MoveMsg = { x: number; y: number } | 'swap';
 
-function initWorker(): void {
+function initWorker(onReady: () => void = onWorkerReady): void {
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'ready') {
-      onWorkerReady();
+      onReady();
     } else if (msg.type === 'result') {
+      clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'error') {
       console.error('[Worker]', msg.message);
@@ -76,8 +78,33 @@ function initWorker(): void {
     }
   };
 
+  // If iOS kills the worker we won't hear from it again — onerror won't always
+  // fire, so we rely on the main-thread watchdog (aiMoveTimer) instead.
+  worker.onerror = (e) => {
+    console.error('[Worker] crashed:', e.message);
+    if (aiThinking && !gameOver) onAiMoveTimeout();
+  };
+
   $loadingMsg.textContent = 'Loading AI model…';
   worker.postMessage({ type: 'init', modelUrl: MODEL_URL, timeLimitMs: getThinkTimeSec() * 1000 });
+}
+
+function clearAiMoveTimer(): void {
+  if (aiMoveTimer !== null) { clearTimeout(aiMoveTimer); aiMoveTimer = null; }
+}
+
+/** Called when the worker doesn't respond within the timeout budget.
+ *  Plays a random legal move so the game can continue, then restarts the worker. */
+function onAiMoveTimeout(): void {
+  aiMoveTimer = null;
+  if (!aiThinking || gameOver) return;
+  console.warn('[Main] AI worker timed out — playing random move and restarting worker');
+  const legal = game.legalPlays();
+  const fallbackMove = legal.at(Math.floor(Math.random() * legal.length));
+  // Restart the worker silently (no new game) so future AI moves work again
+  worker.terminate();
+  initWorker(() => { /* worker restarted; game already in progress */ });
+  onAiMove({ x: fallbackMove.x, y: fallbackMove.y });
 }
 
 function requestAiMove(): void {
@@ -85,10 +112,17 @@ function requestAiMove(): void {
   aiThinking = true;
   setThinking(true);
 
+  const timeSec = getThinkTimeSec();
+
+  // Watchdog: if the worker is killed by iOS (or hangs) and never responds,
+  // this fires after the budget + a generous buffer and plays a fallback move.
+  clearAiMoveTimer();
+  aiMoveTimer = setTimeout(onAiMoveTimeout, (timeSec + 15) * 1000);
+
   const history: MoveMsg[] = game.history.map(m =>
     m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
   );
-  worker.postMessage({ type: 'move', history, timeLimitMs: getThinkTimeSec() * 1000 });
+  worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
 }
 
 // -------------------------------------------------------------------------

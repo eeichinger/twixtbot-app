@@ -58,27 +58,44 @@ export class NeuralMCTS {
   // -------------------------------------------------------------------------
 
   /** Run MCTS simulations until `timeLimitMs` elapses (or `maxTrials` reached).
-   *  Returns visit counts array[528], or a forced Point if win is proven. */
+   *  Returns visit counts array[528], or a forced Point if win is proven.
+   *
+   *  The deadline is started BEFORE root expansion so total runtime including
+   *  the first ONNX call is bounded.  If the deadline fires before any search
+   *  iterations run, we fall back to policy priors (root.P). */
   async mcts(game: Game, maxTrials: number, timeLimitMs: number): Promise<Float64Array | Point> {
     this._computeRoot(game);
+
+    // Start the clock before root expansion so total time is bounded.
+    const deadline = Date.now() + timeLimitMs;
 
     if (!this.root) {
       this.root = await this.expandLeaf(game);
       this.historyAtRoot = [...game.history];
     }
 
-    const deadline = Date.now() + timeLimitMs;
+    if (this.root.proven && this.root.winningMove) return this.root.winningMove;
+
     for (let i = 0; i < maxTrials; i++) {
       if (Date.now() >= deadline) break;
       await this._visitNode(game, this.root, this.root, maxTrials - i);
       if (this.root.proven) break;
     }
 
-    if (this.root.proven && this.root.winningMove) {
-      return this.root.winningMove;
+    if (this.root.proven && this.root.winningMove) return this.root.winningMove;
+
+    const N = this.root.N;
+    const totalN = N.reduce((s, v) => s + v, 0);
+
+    // If no search iterations ran (deadline expired during root expansion),
+    // fall back to the neural-network policy priors rather than returning zeros.
+    if (totalN === 0 && this.root.lmNonzero && this.root.lmNonzero.length > 0) {
+      const priors = new Float64Array(NUM_MOVES);
+      for (const i of this.root.lmNonzero) priors[i] = this.root.P[i];
+      return priors;
     }
 
-    return new Float64Array(this.root.N);
+    return new Float64Array(N);
   }
 
   // -------------------------------------------------------------------------

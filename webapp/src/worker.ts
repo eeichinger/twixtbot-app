@@ -62,30 +62,61 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ type: 'error', message: 'Worker not initialised' });
       return;
     }
+    const { policyIndexToPoint } = await import('./naf.js');
+
+    /** Pick the best move from a Float64Array of scores (visit counts or priors). */
+    function pickBestMove(scores: Float64Array, turn: number): MoveMsg {
+      let bestIdx = 0;
+      for (let i = 1; i < scores.length; i++) {
+        if (scores[i] > scores[bestIdx]) bestIdx = i;
+      }
+      const move = policyIndexToPoint(turn, bestIdx);
+      return { x: move.x, y: move.y };
+    }
+
     try {
       const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
       const timeLimitMs: number = msg.timeLimitMs ?? defaultTimeLimitMs;
+      const game = replayHistory(history);
+      const turn = game.turn;
 
-      const game   = replayHistory(history);
-      const result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs);
-
-      let moveMsg: MoveMsg;
-      if (result instanceof Float64Array) {
-        // Pick the move with the highest visit count
-        let bestIdx = 0;
-        for (let i = 1; i < result.length; i++) {
-          if (result[i] > result[bestIdx]) bestIdx = i;
+      // Hard-deadline timer: fires between await yields if the internal
+      // Date.now() check somehow doesn't stop the loop in time.
+      // This is the second line of defence after the mcts.ts deadline.
+      let resultSent = false;
+      const hardDeadlineId = setTimeout(() => {
+        if (resultSent) return;
+        resultSent = true;
+        const root = mcts!.root;
+        if (root) {
+          const scores = new Float64Array(root.N);
+          // Fall back to priors if no iterations ran yet
+          const totalN = scores.reduce((s, v) => s + v, 0);
+          if (totalN === 0 && root.lmNonzero) {
+            for (const i of root.lmNonzero) scores[i] = root.P[i];
+          }
+          self.postMessage({ type: 'result', move: pickBestMove(scores, turn) });
+        } else {
+          // Root not yet expanded — pick any legal move
+          const legal = game.legalPlays();
+          const p = legal.at(Math.floor(Math.random() * legal.length));
+          self.postMessage({ type: 'result', move: { x: p.x, y: p.y } });
         }
-        // policyIndexToPoint needs to be imported
-        const { policyIndexToPoint } = await import('./naf.js');
-        const move = policyIndexToPoint(game.turn, bestIdx);
-        moveMsg = { x: move.x, y: move.y };
-      } else {
-        // Forced winning point returned directly
-        moveMsg = { x: (result as {x:number,y:number}).x, y: (result as {x:number,y:number}).y };
-      }
+      }, timeLimitMs);
 
-      self.postMessage({ type: 'result', move: moveMsg });
+      const result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs);
+      clearTimeout(hardDeadlineId);
+
+      if (!resultSent) {
+        resultSent = true;
+        let moveMsg: MoveMsg;
+        if (result instanceof Float64Array) {
+          moveMsg = pickBestMove(result, turn);
+        } else {
+          moveMsg = { x: (result as {x:number,y:number}).x, y: (result as {x:number,y:number}).y };
+        }
+        self.postMessage({ type: 'result', move: moveMsg });
+      }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err) });
     }
