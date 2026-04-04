@@ -221,13 +221,11 @@ let gameMode: GameMode = loadGameMode();
 // UI helpers
 // -------------------------------------------------------------------------
 
-/** Show/hide the think-time selector based on the current game mode. */
+/** Show/hide the think-time selector: always in PvC; in PvP only when the AI-move button is live. */
 function syncThinkTimeVisibility(): void {
-  if (gameMode === 'pvc') {
-    $thinkTimeSelect.classList.remove('hidden');
-  } else {
-    $thinkTimeSelect.classList.add('hidden');
-  }
+  const show = gameMode === 'pvc' ||
+    (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
+  $thinkTimeSelect.classList.toggle('hidden', !show);
 }
 
 /** Show the "AI move" button only when a human can meaningfully delegate their turn. */
@@ -371,9 +369,11 @@ function onHumanMove(p: { x: number; y: number }): void {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncThinkTimeVisibility();
     startHeartbeat();
   } else {
-    syncHintButton();  // hide during AI think
+    syncHintButton();
+    syncThinkTimeVisibility();
     requestAiMove();
   }
 }
@@ -410,6 +410,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     diagLog('worker-terminated (freeing memory for human turn)');
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
   } else {
     // AI's turn again (e.g. human used "AI move" and it's still AI's turn in PvC).
@@ -431,9 +432,10 @@ function onUndoClick(): void {
     // PvP: undo exactly 1 move (the last player's move).
     if (game.history.length >= 1) {
       game.undo();
-      board.setGame(game, false);
+      board.setGame(game, true);
       $statusText.textContent = turnStatusText(game.turn, gameMode);
       syncHintButton();
+      syncThinkTimeVisibility();
     }
   } else {
     // PvC: undo the human move + the preceding AI move together, so it's
@@ -449,6 +451,7 @@ function onUndoClick(): void {
       $statusText.textContent = turnStatusText(BLACK, gameMode);
     }
     syncHintButton();
+    syncThinkTimeVisibility();
   }
 }
 
@@ -492,6 +495,7 @@ function startNewGame(): void {
   syncThinkTimeVisibility();
 
   syncHintButton();
+  syncThinkTimeVisibility();
   if (gameMode === 'pvc') {
     requestAiMove();
   } else {
@@ -499,6 +503,7 @@ function startNewGame(): void {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncThinkTimeVisibility();
     startHeartbeat();
   }
 }
@@ -514,10 +519,11 @@ function setThinking(thinking: boolean): void {
     $thinkingOverlay.classList.remove('hidden');
     board.setEnabled(false);
     $hintBtn.classList.add('hidden');
+    $thinkTimeSelect.classList.remove('hidden'); // keep visible so user can adjust mid-think
   } else {
     $thinkingOverlay.classList.add('hidden');
     if (!gameOver) board.setEnabled(true);
-    // syncHintButton() will be called by whoever transitions out of thinking.
+    // syncHintButton() / syncThinkTimeVisibility() called by whoever transitions out of thinking.
   }
 }
 

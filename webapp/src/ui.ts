@@ -134,13 +134,13 @@ export class BoardUI {
    * Convert a client-coordinate touch/pointer position to the nearest legal
    * board cell, or null if out of bounds or illegal.
    */
-  private _snapToLegal(clientX: number, clientY: number): Point | null {
+  private _snapToLegal(clientX: number, clientY: number, canvasYOffset = 0): Point | null {
     const r = this.canvas.getBoundingClientRect();
     const scaleX = this.canvas.width  / r.width;
     const scaleY = this.canvas.height / r.height;
     const p = this._fromCanvas(
       (clientX - r.left) * scaleX,
-      (clientY - r.top)  * scaleY,
+      (clientY - r.top)  * scaleY + canvasYOffset,
     );
     return p && this._isLegalForHuman(p) ? p : null;
   }
@@ -194,7 +194,7 @@ export class BoardUI {
       e.preventDefault();
       if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      this.dragCell = this._snapToLegal(t.clientX, t.clientY);
+      this.dragCell = this._snapToLegal(t.clientX, t.clientY, -this.cellSize * 2);
       this.render();
     }, { passive: false });
 
@@ -202,7 +202,7 @@ export class BoardUI {
       e.preventDefault();
       if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      const next = this._snapToLegal(t.clientX, t.clientY);
+      const next = this._snapToLegal(t.clientX, t.clientY, -this.cellSize * 2);
       // Only re-render when the snapped cell changes (avoids redundant canvas redraws).
       if (next?.x !== this.dragCell?.x || next?.y !== this.dragCell?.y) {
         this.dragCell = next;
@@ -369,10 +369,9 @@ export class BoardUI {
     const rim  = turn === BLACK ? COLORS.pegBlackRim : COLORS.pegWhiteRim;
 
     const [cx, cy] = this._toCanvas(this.dragCell);
-    const offsetY = Math.max(cy - cellSize * 2, pegR + 2);
 
     ctx.beginPath();
-    ctx.arc(cx, offsetY, pegR, 0, 2 * Math.PI);
+    ctx.arc(cx, cy, pegR, 0, 2 * Math.PI);
     ctx.fillStyle   = fill;
     ctx.fill();
     ctx.strokeStyle = rim;
