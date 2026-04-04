@@ -14,8 +14,15 @@
 </head>
 <body>
   <div id="app">
-    <!-- Loading screen -->
-    <div id="loading-screen">
+    <!-- Intro screen (shown by default) -->
+    <div id="intro-screen">
+      <div class="loading-logo">TwixT</div>
+      <div id="intro-subtitle">vs AI</div>
+      <button id="start-btn">Start Game</button>
+    </div>
+
+    <!-- Loading screen (hidden; shown only if model not yet ready when Start is pressed) -->
+    <div id="loading-screen" class="hidden">
       <div class="loading-logo">TwixT</div>
       <div class="loading-spinner"></div>
       <div id="loading-msg">Loading AI model…</div>

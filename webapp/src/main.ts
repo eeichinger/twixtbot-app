@@ -179,6 +179,7 @@ function stopHeartbeat(): void {
 // DOM references
 // -------------------------------------------------------------------------
 
+const $introScreen    = document.getElementById('intro-screen')!;
 const $loadingScreen  = document.getElementById('loading-screen')!;
 const $gameScreen     = document.getElementById('game-screen')!;
 const $statusText     = document.getElementById('status-text')!;
@@ -201,6 +202,8 @@ let board: BoardUI;
 let worker: Worker;
 /** True once the worker has sent 'ready'; false after terminate(). */
 let workerAlive = false;
+/** Set when the user taps Start; gates whether onWorkerReady() begins the game. */
+let userClickedStart = false;
 let gameOver = false;
 let aiThinking = false;
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -306,9 +309,13 @@ function requestAiMove(): void {
 // -------------------------------------------------------------------------
 
 function onWorkerReady(): void {
-  $loadingScreen.classList.add('hidden');
-  $gameScreen.classList.remove('hidden');
-  startNewGame();
+  if (userClickedStart) {
+    // User already tapped Start while model was loading — transition now.
+    $loadingScreen.classList.add('hidden');
+    $gameScreen.classList.remove('hidden');
+    startNewGame();
+  }
+  // else: model is silently ready; the Start button handler will begin the game.
 }
 
 function onHumanMove(p: { x: number; y: number }): void {
@@ -468,7 +475,20 @@ function init(): void {
   $newGameBtn.addEventListener('click',  startNewGame);
   $gameoverNewBtn.addEventListener('click', startNewGame);
 
-  initWorker();
+  // Start button: hide intro, begin game (or show loading if model not ready yet).
+  document.getElementById('start-btn')?.addEventListener('click', () => {
+    userClickedStart = true;
+    $introScreen.classList.add('hidden');
+    if (workerAlive) {
+      $gameScreen.classList.remove('hidden');
+      startNewGame();
+    } else {
+      // Model still loading in background — show loading screen until onWorkerReady fires.
+      $loadingScreen.classList.remove('hidden');
+    }
+  });
+
+  initWorker();  // begin loading model silently while intro screen is shown
 }
 
 init();
