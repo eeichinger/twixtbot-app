@@ -246,7 +246,7 @@ export class BoardUI {
     this._drawGrid();
     this._drawLinks();
     this._drawNodes(pegR);
-    // Callout is drawn last so it always appears on top of pegs/links.
+    // Offset peg preview drawn last so it appears on top of everything.
     if (this.dragCell) this._drawDragCallout(pegR);
   }
 
@@ -354,16 +354,12 @@ export class BoardUI {
   }
 
   /**
-   * Draw the drag-to-place callout indicator while a touch drag is active.
+   * Draw the offset peg preview while a touch drag is active.
    *
-   * Renders three elements in the current player's color:
-   *   1. A semi-transparent ghost peg at the actual snapped board position
-   *      (partially visible under the finger as a position anchor).
-   *   2. A vertical stem line rising from the peg.
-   *   3. A solid callout circle at the top of the stem, floating above the
-   *      finger so the user can see which intersection is targeted.
-   *
-   * The callout Y position is clamped so it never goes above the canvas edge.
+   * The peg is drawn 2 cell-widths above the snapped board position so it is
+   * never hidden under the fingertip.  This is the same convention used by Go
+   * apps on iOS.  The peg drawn here IS the peg that will be placed — no stem
+   * or lollipop.
    */
   private _drawDragCallout(pegR: number): void {
     if (!this.dragCell || !this.game) return;
@@ -373,35 +369,14 @@ export class BoardUI {
     const rim  = turn === BLACK ? COLORS.pegBlackRim : COLORS.pegWhiteRim;
 
     const [cx, cy] = this._toCanvas(this.dragCell);
-    const calloutR  = Math.max(pegR * 1.7, 9);
-    const stemLength = Math.max(cellSize * 2.2, 28);
-    // Clamp so the callout circle stays within the canvas.
-    const calloutCy = Math.max(cy - stemLength, calloutR + 2);
+    const offsetY = Math.max(cy - cellSize * 2, pegR + 2);
 
-    // Stem
     ctx.beginPath();
-    ctx.moveTo(cx, cy - pegR);
-    ctx.lineTo(cx, calloutCy + calloutR);
-    ctx.strokeStyle = fill;
-    ctx.lineWidth   = Math.max(pegR * 0.45, 1.5);
-    ctx.lineCap     = 'round';
-    ctx.stroke();
-
-    // Callout circle
-    ctx.beginPath();
-    ctx.arc(cx, calloutCy, calloutR, 0, 2 * Math.PI);
+    ctx.arc(cx, offsetY, pegR, 0, 2 * Math.PI);
     ctx.fillStyle   = fill;
     ctx.fill();
     ctx.strokeStyle = rim;
-    ctx.lineWidth   = Math.max(calloutR * 0.3, 1.5);
+    ctx.lineWidth   = 1;
     ctx.stroke();
-
-    // Ghost peg at board position
-    ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.arc(cx, cy, pegR, 0, 2 * Math.PI);
-    ctx.fillStyle = fill;
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
   }
 }
