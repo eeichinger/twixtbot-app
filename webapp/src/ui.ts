@@ -21,23 +21,31 @@ import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt } from './twixt.js';
 // Colours
 // -------------------------------------------------------------------------
 
+// Wong color-blind-safe palette: blue (#0072B2) for human (BLACK),
+// orange (#E69F00) for AI (WHITE).  Works for deuteranopia, protanopia,
+// tritanopia.  Background is bright white/cream.
 const COLORS = {
-  bg:           '#1a1a2e',
-  grid:         '#2a2a4e',
-  borderZone:   'rgba(255,255,255,0.04)',
-  node:         '#3a3a5e',
-  nodeHover:    '#5a5a7e',
-  pegBlack:     '#111111',
-  pegBlackRim:  '#555555',
-  pegWhite:     '#f0f0f0',
-  pegWhiteRim:  '#aaaaaa',
-  linkBlack:    '#666666',
-  linkWhite:    '#cccccc',
-  lastMove:     '#ffcc00',
-  winLine:      '#ff4444',
-  // Border accent lines
-  borderBlack:  '#444444',
-  borderWhite:  '#888888',
+  bg:              '#f0f4f8',
+  grid:            '#b0bec5',
+  // Left/right strips = BLACK's goal edges → tinted blue
+  borderZoneBlack: 'rgba(0, 114, 178, 0.15)',
+  // Top/bottom strips = WHITE's goal edges → tinted orange
+  borderZoneWhite: 'rgba(230, 159, 0, 0.15)',
+  // Accent lines along goal edges
+  borderLineBlack: '#0072b2',
+  borderLineWhite: '#e69f00',
+  node:            '#90a4ae',
+  nodeHover:       '#0072b2',
+  // Human player = blue
+  pegBlack:        '#0057b8',
+  pegBlackRim:     '#56b4e9',
+  // AI player = orange
+  pegWhite:        '#c87800',
+  pegWhiteRim:     '#f0c040',
+  linkBlack:       '#0072b2',
+  linkWhite:       '#e69f00',
+  lastMove:        '#d55e00',   // vermillion — distinct from both blue & orange
+  winLine:         '#cc79a7',   // reddish-purple
 };
 
 // -------------------------------------------------------------------------
@@ -193,17 +201,30 @@ export class BoardUI {
   private _drawBorderZones(): void {
     const { ctx } = this;
     const cs = this.cellSize;
+    const hw = Math.max(cs * 0.15, 2);  // half-width of edge accent line
 
-    // BLACK border: top & bottom rows (y=0, y=SIZE-1) — tinted
-    ctx.fillStyle = COLORS.borderZone;
     const [x0, y0] = this._toCanvas(pt(0, 0));
     const [xN, yN] = this._toCanvas(pt(SIZE - 1, SIZE - 1));
-    ctx.fillRect(x0, y0, xN - x0, cs * 0.5);          // top strip
-    ctx.fillRect(x0, yN - cs * 0.5, xN - x0, cs * 0.5); // bottom strip
 
-    // WHITE border: left & right columns (x=0, x=SIZE-1)
+    // Top & bottom strips = WHITE's goal edges (orange)
+    ctx.fillStyle = COLORS.borderZoneWhite;
+    ctx.fillRect(x0, y0, xN - x0, cs * 0.5);
+    ctx.fillRect(x0, yN - cs * 0.5, xN - x0, cs * 0.5);
+
+    // Left & right strips = BLACK's goal edges (blue)
+    ctx.fillStyle = COLORS.borderZoneBlack;
     ctx.fillRect(x0, y0, cs * 0.5, yN - y0);
     ctx.fillRect(xN - cs * 0.5, y0, cs * 0.5, yN - y0);
+
+    // Accent lines along each goal edge
+    ctx.lineWidth = hw;
+    ctx.strokeStyle = COLORS.borderLineWhite;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(xN, y0); ctx.stroke();  // top
+    ctx.beginPath(); ctx.moveTo(x0, yN); ctx.lineTo(xN, yN); ctx.stroke();  // bottom
+
+    ctx.strokeStyle = COLORS.borderLineBlack;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, yN); ctx.stroke();  // left
+    ctx.beginPath(); ctx.moveTo(xN, y0); ctx.lineTo(xN, yN); ctx.stroke();  // right
   }
 
   private _drawGrid(): void {
