@@ -25,10 +25,12 @@ self.addEventListener('install', (event) => {
   const urls: string[] = ((self as unknown as Record<string, unknown>).__WB_MANIFEST as Array<{ url: string }> ?? [])
     .map((e) => e.url);
 
+  // Do NOT call skipWaiting() here.  Skipping waiting fires controllerchange
+  // on all open clients; iOS Safari responds by reloading the page — which
+  // kills the AI computation mid-move.  The new SW will naturally activate
+  // on the user's next visit (once all tabs are closed).
   event.waitUntil(
-    caches.open(PRECACHE)
-      .then((cache) => cache.addAll(urls))
-      .then(() => self.skipWaiting()),
+    caches.open(PRECACHE).then((cache) => cache.addAll(urls)),
   );
 });
 

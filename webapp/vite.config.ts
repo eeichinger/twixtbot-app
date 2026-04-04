@@ -19,8 +19,8 @@ export default defineConfig({
         description: 'Play TwixT against a neural net AI — fully offline',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#1a1a2e',
-        theme_color: '#16213e',
+        background_color: '#f0f4f8',
+        theme_color: '#0072b2',
         icons: [
           { src: 'icons/192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
