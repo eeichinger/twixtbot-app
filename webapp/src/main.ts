@@ -15,7 +15,7 @@ import { BoardUI } from './ui.js';
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-e';
+const APP_VERSION = '2026-04-04-f';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -69,9 +69,11 @@ function diagLog(event: string): void {
 }
 
 function diagInit(): void {
-  // Show version
-  const $ver = document.getElementById('app-version');
-  if ($ver) $ver.textContent = `v${APP_VERSION}`;
+  // Show version on both screens
+  for (const id of ['app-version', 'intro-version']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `v${APP_VERSION}`;
+  }
 
   // Load PREVIOUS session's log into the "prev" panel
   try {
@@ -96,12 +98,13 @@ function diagInit(): void {
     } catch { /* ignore */ }
   });
 
-  // Tap the version string 3× to toggle the diag panel
-  let tapCount = 0;
-  let tapTimer: ReturnType<typeof setTimeout> | null = null;
-  const $ver2 = document.getElementById('app-version');
-  if ($ver2) {
-    $ver2.addEventListener('click', () => {
+  // Helper: attach triple-tap diag-panel toggle to an element
+  function setupVersionTap(id: string): void {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let tapCount = 0;
+    let tapTimer: ReturnType<typeof setTimeout> | null = null;
+    el.addEventListener('click', () => {
       tapCount++;
       if (tapTimer) clearTimeout(tapTimer);
       tapTimer = setTimeout(() => { tapCount = 0; }, 600);
@@ -112,6 +115,9 @@ function diagInit(): void {
       }
     });
   }
+
+  setupVersionTap('app-version');
+  setupVersionTap('intro-version');
 
   // Share button — opens native share sheet on iOS; falls back to clipboard elsewhere
   document.getElementById('diag-share-btn')?.addEventListener('click', async () => {
@@ -184,9 +190,6 @@ const $loadingScreen  = document.getElementById('loading-screen')!;
 const $gameScreen     = document.getElementById('game-screen')!;
 const $statusText     = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
-const $gameoverOverlay = document.getElementById('gameover-overlay')!;
-const $gameoverMsg    = document.getElementById('gameover-msg')!;
-const $gameoverNewBtn = document.getElementById('gameover-new-btn')!;
 const $loadingMsg     = document.getElementById('loading-msg')!;
 const $undoBtn          = document.getElementById('undo-btn')!;
 const $newGameBtn       = document.getElementById('new-game-btn')!;
@@ -376,6 +379,30 @@ function onUndoClick(): void {
   }
 }
 
+function showIntro(result?: string): void {
+  diagLog(`show-intro${result ? ': ' + result : ''}`);
+  stopHeartbeat();
+  clearAiMoveTimer();
+  if (aiThinking) {
+    try { worker.terminate(); } catch { /* ignore */ }
+    workerAlive = false;
+    aiThinking = false;
+    diagLog('worker-terminated (returning to intro)');
+  }
+  gameOver = true;
+  userClickedStart = false;
+  setThinking(false);
+  const subtitleEl = document.getElementById('intro-subtitle');
+  if (subtitleEl) subtitleEl.textContent = result ?? 'vs AI';
+  const startBtn = document.getElementById('start-btn') as HTMLButtonElement | null;
+  if (startBtn) startBtn.textContent = result ? 'Play Again' : 'Start Game';
+  $gameScreen.classList.add('hidden');
+  $loadingScreen.classList.add('hidden');
+  $introScreen.classList.remove('hidden');
+  // Re-arm worker silently for the next game if not already alive
+  if (!workerAlive) initWorker();
+}
+
 function startNewGame(): void {
   diagLog('new-game-start');
   stopHeartbeat();
@@ -389,7 +416,6 @@ function startNewGame(): void {
   gameOver   = false;
   aiThinking = false;
   game = new Game();
-  $gameoverOverlay.classList.add('hidden');
   $thinkingOverlay.classList.add('hidden');
   board.setGame(game, false);
   requestAiMove();
@@ -397,12 +423,7 @@ function startNewGame(): void {
 
 function endGame(msg: string): void {
   diagLog(`game-over: ${msg}`);
-  gameOver = true;
-  stopHeartbeat();
-  setThinking(false);
-  board.setGame(game, false);
-  $gameoverMsg.textContent   = msg;
-  $gameoverOverlay.classList.remove('hidden');
+  showIntro(msg);
 }
 
 function setThinking(thinking: boolean): void {
@@ -471,9 +492,8 @@ function init(): void {
     localStorage.setItem(THINK_TIME_KEY, $thinkTimeSelect.value);
   });
 
-  $undoBtn.addEventListener('click',     onUndoClick);
-  $newGameBtn.addEventListener('click',  startNewGame);
-  $gameoverNewBtn.addEventListener('click', startNewGame);
+  $undoBtn.addEventListener('click',    onUndoClick);
+  $newGameBtn.addEventListener('click', () => showIntro());
 
   // Start button: hide intro, begin game (or show loading if model not ready yet).
   document.getElementById('start-btn')?.addEventListener('click', () => {
@@ -488,7 +508,7 @@ function init(): void {
     }
   });
 
-  initWorker();  // begin loading model silently while intro screen is shown
+  initWorker();  // begin loading model silently while intro screen is shown (userClickedStart=false)
 }
 
 init();

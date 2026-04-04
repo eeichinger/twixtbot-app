@@ -14,11 +14,12 @@
 </head>
 <body>
   <div id="app">
-    <!-- Intro screen (shown by default) -->
-    <div id="intro-screen">
+    <!-- Intro screen (shown by default; also shown after game ends) -->
+    <div id="intro-screen" style="position:relative">
       <div class="loading-logo">TwixT</div>
       <div id="intro-subtitle">vs AI</div>
       <button id="start-btn">Start Game</button>
+      <span id="intro-version" title="Tap 3× for diagnostics" style="position:absolute;bottom:12px;right:12px;font-size:0.7rem;color:#94a3b8;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
     </div>
 
     <!-- Loading screen (hidden; shown only if model not yet ready when Start is pressed) -->
@@ -28,28 +29,15 @@
       <div id="loading-msg">Loading AI model…</div>
     </div>
 
-    <!-- Game screen (hidden until ready) -->
+    <!-- Game screen (hidden until game starts) -->
     <div id="game-screen" class="hidden">
       <header id="status-bar">
         <span id="status-text">Your turn (Black)</span>
         <select id="think-time-select" title="AI think time"></select>
         <button id="undo-btn" title="Undo your last move">Undo</button>
-        <button id="new-game-btn" title="Start a new game">New</button>
+        <button id="new-game-btn" title="Return to title screen">New</button>
         <span id="app-version" title="Tap 3× for diagnostics" style="font-size:0.7rem;color:#94a3b8;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
       </header>
-
-      <!-- Diagnostic log overlay (hidden by default, tap version 3× to toggle) -->
-      <div id="diag-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#00ff88;font-size:11px;font-family:monospace;padding:8px;z-index:9999;touch-action:pan-y">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <strong>Diagnostics</strong>
-          <div style="display:flex;gap:6px">
-            <button id="diag-share-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Share</button>
-            <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
-          </div>
-        </div>
-        <div id="diag-log-prev" style="color:#aaa;border-bottom:1px solid #444;margin-bottom:4px;padding-bottom:4px"></div>
-        <div id="diag-log-cur"></div>
-      </div>
 
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
@@ -60,12 +48,19 @@
         <div class="thinking-spinner"></div>
         <div>AI is thinking…</div>
       </div>
+    </div>
 
-      <!-- Game-over overlay -->
-      <div id="gameover-overlay" class="hidden">
-        <div id="gameover-msg"></div>
-        <button id="gameover-new-btn">Play Again</button>
+    <!-- Diagnostic log overlay — lives outside game-screen so it's reachable from any screen -->
+    <div id="diag-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#00ff88;font-size:11px;font-family:monospace;padding:8px;z-index:9999;touch-action:pan-y">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong>Diagnostics</strong>
+        <div style="display:flex;gap:6px">
+          <button id="diag-share-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Share</button>
+          <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
+        </div>
       </div>
+      <div id="diag-log-prev" style="color:#aaa;border-bottom:1px solid #444;margin-bottom:4px;padding-bottom:4px"></div>
+      <div id="diag-log-cur"></div>
     </div>
   </div>
 
