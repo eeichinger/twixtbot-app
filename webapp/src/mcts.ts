@@ -57,9 +57,9 @@ export class NeuralMCTS {
   // Public API
   // -------------------------------------------------------------------------
 
-  /** Run `trials` MCTS simulations from the current `game` state.
+  /** Run MCTS simulations until `timeLimitMs` elapses (or `maxTrials` reached).
    *  Returns visit counts array[528], or a forced Point if win is proven. */
-  async mcts(game: Game, trials: number): Promise<Float64Array | Point> {
+  async mcts(game: Game, maxTrials: number, timeLimitMs: number): Promise<Float64Array | Point> {
     this._computeRoot(game);
 
     if (!this.root) {
@@ -67,8 +67,10 @@ export class NeuralMCTS {
       this.historyAtRoot = [...game.history];
     }
 
-    for (let i = 0; i < trials; i++) {
-      await this._visitNode(game, this.root, this.root, trials - i);
+    const deadline = Date.now() + timeLimitMs;
+    for (let i = 0; i < maxTrials; i++) {
+      if (Date.now() >= deadline) break;
+      await this._visitNode(game, this.root, this.root, maxTrials - i);
       if (this.root.proven) break;
     }
 

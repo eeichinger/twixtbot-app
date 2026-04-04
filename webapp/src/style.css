@@ -86,7 +86,8 @@ html, body {
   font-weight: 500;
 }
 
-#status-bar button {
+#status-bar button,
+#think-time-select {
   padding: 6px 14px;
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 6px;
@@ -96,8 +97,14 @@ html, body {
   cursor: pointer;
   transition: background 0.15s;
 }
-#status-bar button:hover { background: rgba(255,255,255,0.08); }
+#status-bar button:hover,
+#think-time-select:hover { background: rgba(255,255,255,0.08); }
 #status-bar button:active { background: rgba(255,255,255,0.15); }
+#think-time-select {
+  padding-right: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+}
 
 /* Board area */
 #board-container {

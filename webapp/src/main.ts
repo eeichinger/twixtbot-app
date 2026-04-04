@@ -15,10 +15,18 @@ import { BoardUI } from './ui.js';
 // Constants
 // -------------------------------------------------------------------------
 
-const MODEL_URL     = import.meta.env.BASE_URL + 'model.onnx';
-const MCTS_TRIALS   = 50;    // single-threaded WASM on mobile — keep snappy
-const HUMAN_COLOR   = BLACK;
-const AI_COLOR      = WHITE;
+const MODEL_URL   = import.meta.env.BASE_URL + 'model.onnx';
+const HUMAN_COLOR = BLACK;
+const AI_COLOR    = WHITE;
+
+const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
+const THINK_TIME_KEY     = 'twixt-think-time-sec';
+const DEFAULT_THINK_TIME = 25;
+
+function getThinkTimeSec(): number {
+  const stored = parseInt(localStorage.getItem(THINK_TIME_KEY) ?? '', 10);
+  return THINK_TIME_OPTIONS.includes(stored) ? stored : DEFAULT_THINK_TIME;
+}
 
 // -------------------------------------------------------------------------
 // DOM references
@@ -32,8 +40,9 @@ const $gameoverOverlay = document.getElementById('gameover-overlay')!;
 const $gameoverMsg    = document.getElementById('gameover-msg')!;
 const $gameoverNewBtn = document.getElementById('gameover-new-btn')!;
 const $loadingMsg     = document.getElementById('loading-msg')!;
-const $undoBtn        = document.getElementById('undo-btn')!;
-const $newGameBtn     = document.getElementById('new-game-btn')!;
+const $undoBtn          = document.getElementById('undo-btn')!;
+const $newGameBtn       = document.getElementById('new-game-btn')!;
+const $thinkTimeSelect  = document.getElementById('think-time-select') as HTMLSelectElement;
 const boardCanvas     = document.getElementById('board-canvas') as HTMLCanvasElement;
 
 // -------------------------------------------------------------------------
@@ -68,7 +77,7 @@ function initWorker(): void {
   };
 
   $loadingMsg.textContent = 'Loading AI model…';
-  worker.postMessage({ type: 'init', modelUrl: MODEL_URL, trials: MCTS_TRIALS });
+  worker.postMessage({ type: 'init', modelUrl: MODEL_URL, timeLimitMs: getThinkTimeSec() * 1000 });
 }
 
 function requestAiMove(): void {
@@ -79,7 +88,7 @@ function requestAiMove(): void {
   const history: MoveMsg[] = game.history.map(m =>
     m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
   );
-  worker.postMessage({ type: 'move', history, trials: MCTS_TRIALS });
+  worker.postMessage({ type: 'move', history, timeLimitMs: getThinkTimeSec() * 1000 });
 }
 
 // -------------------------------------------------------------------------
@@ -182,6 +191,19 @@ function setThinking(thinking: boolean): void {
 
 function init(): void {
   board = new BoardUI(boardCanvas, { onMove: onHumanMove });
+
+  // Populate think-time selector and restore saved value
+  const savedSec = getThinkTimeSec();
+  for (const sec of THINK_TIME_OPTIONS) {
+    const opt = document.createElement('option');
+    opt.value = String(sec);
+    opt.textContent = `${sec}s`;
+    if (sec === savedSec) opt.selected = true;
+    $thinkTimeSelect.appendChild(opt);
+  }
+  $thinkTimeSelect.addEventListener('change', () => {
+    localStorage.setItem(THINK_TIME_KEY, $thinkTimeSelect.value);
+  });
 
   $undoBtn.addEventListener('click',     onUndoClick);
   $newGameBtn.addEventListener('click',  startNewGame);

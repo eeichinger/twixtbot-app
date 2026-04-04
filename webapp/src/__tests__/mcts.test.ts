@@ -29,14 +29,14 @@ async function uniformSap(game: Game): Promise<[number, Float32Array]> {
 describe('NeuralMCTS — return type', () => {
   it('returns a Float64Array of length 528 on a fresh game', async () => {
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    const result = await mcts.mcts(new Game(), 5);
+    const result = await mcts.mcts(new Game(), 5, 30_000);
     expect(result).toBeInstanceOf(Float64Array);
     expect((result as Float64Array).length).toBe(NUM_MOVES);
   });
 
   it('returns non-negative visit counts', async () => {
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    const result = await mcts.mcts(new Game(), 5) as Float64Array;
+    const result = await mcts.mcts(new Game(), 5, 30_000) as Float64Array;
     for (const v of result) {
       expect(v).toBeGreaterThanOrEqual(0);
     }
@@ -45,7 +45,7 @@ describe('NeuralMCTS — return type', () => {
   it('total visit count equals number of trials run', async () => {
     const trials = 10;
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    const result = await mcts.mcts(new Game(), trials) as Float64Array;
+    const result = await mcts.mcts(new Game(), trials, 30_000) as Float64Array;
     const total = Array.from(result).reduce((a, b) => a + b, 0);
     expect(total).toBe(trials);
   });
@@ -59,7 +59,7 @@ describe('NeuralMCTS — only legal moves are visited', () => {
   it('no visit counts for illegal moves on a fresh WHITE game', async () => {
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
     const g = new Game(); // WHITE to move
-    const result = await mcts.mcts(g, 20) as Float64Array;
+    const result = await mcts.mcts(g, 20, 30_000) as Float64Array;
     const mask = legalMovePolicyArray(g);
     for (let i = 0; i < NUM_MOVES; i++) {
       if (mask[i] === 0) {
@@ -72,7 +72,7 @@ describe('NeuralMCTS — only legal moves are visited', () => {
     const g = new Game();
     g.play(pt(5, 5)); // WHITE plays → BLACK to move
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    const result = await mcts.mcts(g, 20) as Float64Array;
+    const result = await mcts.mcts(g, 20, 30_000) as Float64Array;
     const mask = legalMovePolicyArray(g);
     for (let i = 0; i < NUM_MOVES; i++) {
       if (mask[i] === 0) {
@@ -93,7 +93,7 @@ describe('NeuralMCTS — does not mutate game state', () => {
     const histBefore = [...g.history];
     const turnBefore = g.turn;
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    await mcts.mcts(g, 5);
+    await mcts.mcts(g, 5, 30_000);
     expect(g.history.length).toBe(histBefore.length);
     expect(g.turn).toBe(turnBefore);
   });
@@ -104,7 +104,7 @@ describe('NeuralMCTS — does not mutate game state', () => {
     const whitePegsBefore = new Int8Array(g.pegs[WHITE]);
     const blackPegsBefore = new Int8Array(g.pegs[BLACK]);
     const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
-    await mcts.mcts(g, 5);
+    await mcts.mcts(g, 5, 30_000);
     expect(Array.from(g.pegs[WHITE])).toEqual(Array.from(whitePegsBefore));
     expect(Array.from(g.pegs[BLACK])).toEqual(Array.from(blackPegsBefore));
   });
@@ -157,7 +157,7 @@ describe('NeuralMCTS — forced win returns a Point', () => {
 
     const mcts = new NeuralMCTS(biasedSap, 1.0, 0.0);
     // Run enough trials to expand and prove the win
-    const result = await mcts.mcts(g, 30);
+    const result = await mcts.mcts(g, 30, 30_000);
 
     // Result should be a Point (not Float64Array) when proven win is detected
     const isPoint = result !== null &&

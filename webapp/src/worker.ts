@@ -31,9 +31,11 @@ function fromMoveRecord(m: MoveRecord): MoveMsg {
   return { x: m.x, y: m.y };
 }
 
+const MAX_TRIALS = 100_000;  // effectively unlimited; time limit is the real constraint
+
 let player: OnnxPlayer | null = null;
 let mcts:   NeuralMCTS | null = null;
-let defaultTrials = 100;
+let defaultTimeLimitMs = 25_000;
 
 self.onmessage = async (e: MessageEvent) => {
   const msg = e.data;
@@ -42,7 +44,7 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       player = new OnnxPlayer();
       await player.load(msg.modelUrl);
-      if (msg.trials) defaultTrials = msg.trials;
+      if (msg.timeLimitMs) defaultTimeLimitMs = msg.timeLimitMs;
 
       mcts = new NeuralMCTS(
         (game) => player!.eval(game),
@@ -62,10 +64,10 @@ self.onmessage = async (e: MessageEvent) => {
     }
     try {
       const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
-      const trials: number = msg.trials ?? defaultTrials;
+      const timeLimitMs: number = msg.timeLimitMs ?? defaultTimeLimitMs;
 
       const game   = replayHistory(history);
-      const result = await mcts.mcts(game, trials);
+      const result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs);
 
       let moveMsg: MoveMsg;
       if (result instanceof Float64Array) {
@@ -89,7 +91,8 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
   } else if (msg.type === 'abort') {
-    // Reset tree to free memory; the in-flight async MCTS will resolve naturally.
+    // Reset tree to free memory; the in-flight async MCTS will finish its current
+    // trial and then return (time limit check will stop the loop on next iteration).
     if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 1.0, 0.0);
   }
 };
