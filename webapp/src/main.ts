@@ -15,7 +15,7 @@ import { BoardUI } from './ui.js';
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-c';
+const APP_VERSION = '2026-04-04-d';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -124,6 +124,46 @@ function diagInit(): void {
 }
 
 // -------------------------------------------------------------------------
+// Screen Wake Lock — prevents iOS from auto-locking during gameplay.
+//
+// Root cause of the iOS reloads: the phone auto-locks (~30s of no touch
+// input) while waiting for the human move. iOS kills the web content process
+// on lock without firing beforeunload/pagehide. The wake lock keeps the
+// screen on during an active game so the OS cannot kill the page.
+// -------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WakeLockNav = { wakeLock?: { request(type: string): Promise<EventTarget & { release(): Promise<void> }> } };
+
+let wakeLock: (EventTarget & { release(): Promise<void> }) | null = null;
+
+async function acquireWakeLock(): Promise<void> {
+  const nav = navigator as unknown as WakeLockNav;
+  if (!nav.wakeLock) {
+    diagLog('wake-lock: api not available');
+    return;
+  }
+  try {
+    wakeLock = await nav.wakeLock.request('screen');
+    diagLog('wake-lock-acquired');
+    wakeLock.addEventListener('release', () => {
+      diagLog('wake-lock-released-by-browser');
+      wakeLock = null;
+    });
+  } catch (e) {
+    diagLog(`wake-lock-failed: ${e}`);
+  }
+}
+
+function releaseWakeLock(): void {
+  if (wakeLock) {
+    wakeLock.release().catch(() => { /* ignore */ });
+    wakeLock = null;
+    diagLog('wake-lock-released');
+  }
+}
+
+// -------------------------------------------------------------------------
 // DOM references
 // -------------------------------------------------------------------------
 
@@ -147,6 +187,8 @@ const boardCanvas     = document.getElementById('board-canvas') as HTMLCanvasEle
 let game  = new Game();
 let board: BoardUI;
 let worker: Worker;
+/** True when the worker has sent 'ready' and is alive; false after terminate(). */
+let workerAlive = false;
 let gameOver = false;
 let aiThinking = false;
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -158,12 +200,14 @@ let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
 type MoveMsg = { x: number; y: number } | 'swap';
 
 function initWorker(onReady: () => void = onWorkerReady): void {
-  diagLog(`worker-init-start`);
+  diagLog('worker-init-start');
+  workerAlive = false;
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'ready') {
+      workerAlive = true;
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
@@ -185,6 +229,7 @@ function initWorker(onReady: () => void = onWorkerReady): void {
   worker.onerror = (e) => {
     diagLog(`worker-onerror: ${e.message}`);
     console.error('[Worker] crashed:', e.message);
+    workerAlive = false;
     if (aiThinking && !gameOver) onAiMoveTimeout();
   };
 
@@ -201,8 +246,7 @@ function clearAiMoveTimer(): void {
 }
 
 /** Called when the worker doesn't respond within the timeout budget.
- *  Terminates the worker, plays a random legal move, then lets requestAiMove()
- *  restart the worker when the human takes their next turn. */
+ *  Terminates the hung worker and plays a random legal fallback move. */
 function onAiMoveTimeout(): void {
   diagLog('watchdog-fired — worker did not respond; playing fallback move');
   aiMoveTimer = null;
@@ -210,9 +254,11 @@ function onAiMoveTimeout(): void {
   const legal = game.legalPlays();
   const fallbackMove = legal.at(Math.floor(Math.random() * legal.length))!;
   try { worker.terminate(); } catch { /* ignore */ }
+  workerAlive = false;
   diagLog('worker-terminated (by watchdog)');
-  // onAiMove() will also call worker.terminate() — harmless on an already-terminated worker
   onAiMove({ x: fallbackMove.x, y: fallbackMove.y });
+  // Worker will be lazily re-initialised by requestAiMove() on the next human turn.
+  // No eager restart here to avoid a race if the human moves immediately.
 }
 
 function requestAiMove(): void {
@@ -221,27 +267,28 @@ function requestAiMove(): void {
   setThinking(true);
 
   const timeSec = getThinkTimeSec();
-  // Extra 30s buffer on top of think time to account for model reload from SW cache (~0.6s)
-  const watchdogMs = (timeSec + 30) * 1000;
+  const watchdogMs = (timeSec + 15) * 1000;
 
-  // Capture history BEFORE creating the new worker so the closure is stable
-  const history: MoveMsg[] = game.history.map(m =>
-    m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
-  );
-
-  // Set watchdog before init so any init failure is also covered
   clearAiMoveTimer();
   aiMoveTimer = setTimeout(onAiMoveTimeout, watchdogMs);
   diagLog(`request-ai-move timeSec=${timeSec} watchdog=${watchdogMs}ms`);
 
-  // Always create a fresh worker for each move.  The previous worker was terminated
-  // in onAiMove() to immediately free its WASM heap (~300-500 MB), preventing iOS
-  // from killing the page due to memory pressure during the human turn.
-  diagLog('worker-restarting-for-move');
-  initWorker(() => {
-    diagLog('worker-ready-sending-move');
+  const history: MoveMsg[] = game.history.map(m =>
+    m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
+  );
+
+  if (workerAlive) {
+    // Normal case: worker is already loaded and waiting — send move directly.
     worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
-  });
+  } else {
+    // Worker was terminated (watchdog recovery or "New Game" cancelled a move).
+    // Re-initialise, then send the move once it reports ready.
+    diagLog('worker-restarting-for-move');
+    initWorker(() => {
+      diagLog('worker-ready-sending-move');
+      worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
+    });
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -275,12 +322,9 @@ function onHumanMove(p: { x: number; y: number }): void {
 }
 
 function onAiMove(moveMsg: MoveMsg): void {
-  // Terminate the worker IMMEDIATELY to free its WASM heap (~300-500 MB).
-  // This prevents iOS from killing the page due to memory pressure during
-  // the human turn.  The worker will be re-created in requestAiMove().
-  try { worker.terminate(); } catch { /* already terminated — ignore */ }
-  diagLog('worker-terminated-post-move (freed WASM heap)');
-
+  // Worker stays alive — no terminate here. The worker's WASM heap
+  // remains allocated but iOS will not kill the page because the
+  // Screen Wake Lock prevents auto-lock.
   aiThinking = false;
   setThinking(false);
   if (gameOver) return;
@@ -319,15 +363,21 @@ function onUndoClick(): void {
 
 function startNewGame(): void {
   diagLog('new-game-start');
-  // Cancel any pending watchdog and kill any in-flight worker before resetting state
   clearAiMoveTimer();
-  try { if (worker) worker.terminate(); } catch { /* ignore */ }
+  // If AI was mid-move when "New" was pressed, cancel it and mark worker as needing restart.
+  // requestAiMove() will re-initialise the worker for the first move of the new game.
+  if (aiThinking) {
+    try { worker.terminate(); } catch { /* ignore */ }
+    workerAlive = false;
+    diagLog('worker-terminated (new-game cancelled in-flight move)');
+  }
   gameOver   = false;
   aiThinking = false;
   game = new Game();
   $gameoverOverlay.classList.add('hidden');
   $thinkingOverlay.classList.add('hidden');
-  board.setGame(game, false);  // AI (WHITE) moves first; board disabled until then
+  board.setGame(game, false);  // board disabled until AI's first move
+  acquireWakeLock();           // keep screen on during gameplay
   requestAiMove();
 }
 
@@ -338,6 +388,7 @@ function endGame(msg: string): void {
   board.setGame(game, false);
   $gameoverMsg.textContent   = msg;
   $gameoverOverlay.classList.remove('hidden');
+  releaseWakeLock();           // allow screen to auto-lock when game is done
 }
 
 function setThinking(thinking: boolean): void {
@@ -366,6 +417,15 @@ function init(): void {
   window.addEventListener('beforeunload', () => diagLog('page-beforeunload'));
   window.addEventListener('pagehide', (e) => diagLog(`page-pagehide persisted=${e.persisted}`));
   window.addEventListener('pageshow', (e) => diagLog(`page-pageshow persisted=${e.persisted}`));
+
+  // Re-acquire wake lock when page becomes visible again (user returns from background).
+  // The wake lock is automatically released by the browser when the page is hidden.
+  document.addEventListener('visibilitychange', () => {
+    diagLog(`visibility: ${document.visibilityState}`);
+    if (document.visibilityState === 'visible' && !gameOver) {
+      acquireWakeLock();
+    }
+  });
 
   // Log SW controller changes — if this fires, the SW is causing a reload
   if (navigator.serviceWorker) {
