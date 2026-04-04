@@ -13,6 +13,13 @@
  * Visual convention (matching common TwixT board diagrams):
  *   - The board is drawn with x increasing right, y increasing down.
  *   - Border zones are tinted to show they are off-limits.
+ *
+ * Touch UX: drag-to-place with floating callout.
+ *   - touchstart  → snap to nearest legal cell, show preview callout
+ *   - touchmove   → callout tracks the finger
+ *   - touchend    → commit the move
+ *   - touchcancel → discard
+ * Desktop: single click / pointerdown as before.
  */
 
 import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt } from './twixt.js';
@@ -66,6 +73,8 @@ export class BoardUI {
   private padTop   = 0;
 
   private hoveredCell: Point | null = null;
+  /** Non-null while a touch drag is in progress; holds the snapped target cell. */
+  private dragCell:    Point | null = null;
   private game: Game | null = null;
   private enabled = false;   // whether human can tap
 
@@ -121,14 +130,30 @@ export class BoardUI {
     return pt(x, y);
   }
 
+  /**
+   * Convert a client-coordinate touch/pointer position to the nearest legal
+   * board cell, or null if out of bounds or illegal.
+   */
+  private _snapToLegal(clientX: number, clientY: number): Point | null {
+    const r = this.canvas.getBoundingClientRect();
+    const scaleX = this.canvas.width  / r.width;
+    const scaleY = this.canvas.height / r.height;
+    const p = this._fromCanvas(
+      (clientX - r.left) * scaleX,
+      (clientY - r.top)  * scaleY,
+    );
+    return p && this._isLegalForHuman(p) ? p : null;
+  }
+
   // -------------------------------------------------------------------------
   // Input events
   // -------------------------------------------------------------------------
 
   private _setupEvents(): void {
+    // ---- Desktop: hover highlight ----------------------------------------
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.enabled) return;
-      const r    = this.canvas.getBoundingClientRect();
+      const r = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width  / r.width;
       const scaleY = this.canvas.height / r.height;
       const p = this._fromCanvas(
@@ -144,33 +169,58 @@ export class BoardUI {
       this.render();
     });
 
-    // Use touchstart (not pointerdown) as the primary tap handler on mobile.
-    // iOS Safari does not reliably dispatch pointerdown on <canvas> elements
-    // even with touch-action:none; touchstart is always delivered.
-    const handleTap = (clientX: number, clientY: number) => {
+    // ---- Desktop: single click / stylus ----------------------------------
+    // Keep pointerdown for mouse/stylus. Skip touch (handled below).
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return; // handled by touchstart/touchend
+      e.preventDefault();
       if (!this.enabled || !this.game) return;
-      const r = this.canvas.getBoundingClientRect();
-      const scaleX = this.canvas.width  / r.width;
-      const scaleY = this.canvas.height / r.height;
-      const p = this._fromCanvas(
-        (clientX - r.left) * scaleX,
-        (clientY - r.top)  * scaleY,
-      );
-      if (!p || !this._isLegalForHuman(p)) return;
-      this.cb.onMove(p);
-    };
+      const p = this._snapToLegal(e.clientX, e.clientY);
+      if (p) this.cb.onMove(p);
+    });
+
+    // ---- Mobile: drag-to-place with callout indicator --------------------
+    //
+    // On touchstart: snap to nearest legal cell, show preview callout.
+    // On touchmove:  update snapped cell as finger slides (only re-render
+    //                when the snapped cell actually changes, for performance).
+    // On touchend:   commit the move at the last snapped cell.
+    // On touchcancel: discard (e.g. system gesture / incoming call).
+    //
+    // All handlers use { passive: false } so e.preventDefault() works,
+    // preventing browser scroll/zoom on the canvas.
 
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      handleTap(t.clientX, t.clientY);
+      this.dragCell = this._snapToLegal(t.clientX, t.clientY);
+      this.render();
     }, { passive: false });
 
-    // Keep pointerdown for mouse/stylus on desktop.
-    this.canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch') return; // already handled by touchstart
+    this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      handleTap(e.clientX, e.clientY);
+      if (!this.enabled || !this.game) return;
+      const t = e.changedTouches[0];
+      const next = this._snapToLegal(t.clientX, t.clientY);
+      // Only re-render when the snapped cell changes (avoids redundant canvas redraws).
+      if (next?.x !== this.dragCell?.x || next?.y !== this.dragCell?.y) {
+        this.dragCell = next;
+        this.render();
+      }
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      const cell = this.dragCell;
+      this.dragCell = null;
+      this.render();          // clear callout before the board updates
+      if (cell) this.cb.onMove(cell);
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchcancel', () => {
+      this.dragCell = null;
+      this.render();
     });
   }
 
@@ -196,6 +246,8 @@ export class BoardUI {
     this._drawGrid();
     this._drawLinks();
     this._drawNodes(pegR);
+    // Callout is drawn last so it always appears on top of pegs/links.
+    if (this.dragCell) this._drawDragCallout(pegR);
   }
 
   private _drawBorderZones(): void {
@@ -299,5 +351,57 @@ export class BoardUI {
         }
       }
     }
+  }
+
+  /**
+   * Draw the drag-to-place callout indicator while a touch drag is active.
+   *
+   * Renders three elements in the current player's color:
+   *   1. A semi-transparent ghost peg at the actual snapped board position
+   *      (partially visible under the finger as a position anchor).
+   *   2. A vertical stem line rising from the peg.
+   *   3. A solid callout circle at the top of the stem, floating above the
+   *      finger so the user can see which intersection is targeted.
+   *
+   * The callout Y position is clamped so it never goes above the canvas edge.
+   */
+  private _drawDragCallout(pegR: number): void {
+    if (!this.dragCell || !this.game) return;
+    const { ctx, game, cellSize } = this;
+    const turn = game.turn;
+    const fill = turn === BLACK ? COLORS.pegBlack : COLORS.pegWhite;
+    const rim  = turn === BLACK ? COLORS.pegBlackRim : COLORS.pegWhiteRim;
+
+    const [cx, cy] = this._toCanvas(this.dragCell);
+    const calloutR  = Math.max(pegR * 1.7, 9);
+    const stemLength = Math.max(cellSize * 2.2, 28);
+    // Clamp so the callout circle stays within the canvas.
+    const calloutCy = Math.max(cy - stemLength, calloutR + 2);
+
+    // Stem
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - pegR);
+    ctx.lineTo(cx, calloutCy + calloutR);
+    ctx.strokeStyle = fill;
+    ctx.lineWidth   = Math.max(pegR * 0.45, 1.5);
+    ctx.lineCap     = 'round';
+    ctx.stroke();
+
+    // Callout circle
+    ctx.beginPath();
+    ctx.arc(cx, calloutCy, calloutR, 0, 2 * Math.PI);
+    ctx.fillStyle   = fill;
+    ctx.fill();
+    ctx.strokeStyle = rim;
+    ctx.lineWidth   = Math.max(calloutR * 0.3, 1.5);
+    ctx.stroke();
+
+    // Ghost peg at board position
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.arc(cx, cy, pegR, 0, 2 * Math.PI);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
   }
 }
