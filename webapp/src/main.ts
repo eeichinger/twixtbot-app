@@ -195,6 +195,7 @@ const $gameScreen      = document.getElementById('game-screen')!;
 const $statusText      = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
 const $loadingMsg      = document.getElementById('loading-msg')!;
+const $hintBtn         = document.getElementById('hint-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
@@ -227,6 +228,12 @@ function syncThinkTimeVisibility(): void {
   } else {
     $thinkTimeSelect.classList.add('hidden');
   }
+}
+
+/** Show the "AI move" button only when a human can meaningfully delegate their turn. */
+function syncHintButton(): void {
+  const show = !gameOver && !aiThinking && isHumanTurn(game.turn, gameMode);
+  $hintBtn.classList.toggle('hidden', !show);
 }
 
 // -------------------------------------------------------------------------
@@ -363,8 +370,10 @@ function onHumanMove(p: { x: number; y: number }): void {
     // Other human player takes over.
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
     startHeartbeat();
   } else {
+    syncHintButton();  // hide during AI think
     requestAiMove();
   }
 }
@@ -375,26 +384,44 @@ function onAiMove(moveMsg: MoveMsg): void {
   if (gameOver) return;
 
   const move: MoveRecord = moveMsg === 'swap' ? 'swap' : pt((moveMsg as {x:number;y:number}).x, (moveMsg as {x:number;y:number}).y);
+  // Remember who just moved before game.play() advances game.turn.
+  const movedColor = game.turn;
   game.play(move);
-  board.setGame(game, true);
 
   if (game.justWon()) {
-    endGame(resultMessage(WHITE, gameMode));
+    board.setGame(game, false);
+    endGame(resultMessage(movedColor, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
+    board.setGame(game, false);
     endGame(resultMessage(null, gameMode));
     return;
   }
 
-  diagLog('human-turn-start');
-  // Free WASM heap during human turn — iOS kills the page if ~300MB stays allocated.
-  // Worker will be restarted in requestAiMove() when the human makes their move.
-  worker.terminate();
-  workerAlive = false;
-  diagLog('worker-terminated (freeing memory for human turn)');
-  $statusText.textContent = turnStatusText(BLACK, gameMode);
-  startHeartbeat();  // monitor JS suspension during human turn
+  if (isHumanTurn(game.turn, gameMode)) {
+    // Human's turn next — hand control back.
+    board.setGame(game, true);
+    diagLog('human-turn-start');
+    // Free WASM heap during human turn — iOS kills the page if ~300MB stays allocated.
+    // Worker will be restarted in requestAiMove() when the human makes their next move.
+    worker.terminate();
+    workerAlive = false;
+    diagLog('worker-terminated (freeing memory for human turn)');
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
+    startHeartbeat();  // monitor JS suspension during human turn
+  } else {
+    // AI's turn again (e.g. human used "AI move" and it's still AI's turn in PvC).
+    board.setGame(game, false);
+    requestAiMove();
+  }
+}
+
+function onHintClick(): void {
+  if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode)) return;
+  diagLog(`hint-requested turn=${game.turn}`);
+  requestAiMove();
 }
 
 function onUndoClick(): void {
@@ -406,6 +433,7 @@ function onUndoClick(): void {
       game.undo();
       board.setGame(game, false);
       $statusText.textContent = turnStatusText(game.turn, gameMode);
+      syncHintButton();
     }
   } else {
     // PvC: undo the human move + the preceding AI move together, so it's
@@ -420,6 +448,7 @@ function onUndoClick(): void {
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
     }
+    syncHintButton();
   }
 }
 
@@ -462,12 +491,14 @@ function startNewGame(): void {
   board.setGame(game, false);
   syncThinkTimeVisibility();
 
+  syncHintButton();
   if (gameMode === 'pvc') {
     requestAiMove();
   } else {
     // PvP: WHITE (first mover) takes the first turn.
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
     startHeartbeat();
   }
 }
@@ -482,9 +513,11 @@ function setThinking(thinking: boolean): void {
     $statusText.textContent = 'AI is thinking…';
     $thinkingOverlay.classList.remove('hidden');
     board.setEnabled(false);
+    $hintBtn.classList.add('hidden');
   } else {
     $thinkingOverlay.classList.add('hidden');
     if (!gameOver) board.setEnabled(true);
+    // syncHintButton() will be called by whoever transitions out of thinking.
   }
 }
 
@@ -543,6 +576,7 @@ function init(): void {
     localStorage.setItem(THINK_TIME_KEY, $thinkTimeSelect.value);
   });
 
+  $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
   $newGameBtn.addEventListener('click', () => showIntro());
 
