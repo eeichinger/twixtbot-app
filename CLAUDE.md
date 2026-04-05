@@ -419,3 +419,182 @@ The board's touch drag callout offset (`-this.cellSize * 2`) was too small on iP
 
 Fix: `Math.max(this.cellSize * 2, 65)` — a 65px floor ensures the preview peg always
 clears the fingertip on small-cell boards without meaningfully changing the tablet experience.
+
+---
+
+## PWA Offline Support — Pitfalls and Fixes
+
+### Pitfall 1: Render-blocking external CSS causes white screen offline (CRITICAL)
+
+**Symptom:** App shows white screen for minutes when launched offline from home screen.
+JS module scripts still execute (diagnostic logs appear), but no content paints.
+
+**Root cause:** `<link rel="stylesheet">` for external resources (e.g. Google Fonts) is
+**render-blocking**. When offline, the browser cannot fetch it and iOS Safari holds
+rendering, waiting for a network timeout that never comes. Module scripts (`<script type="module">`)
+are deferred and run independently, which is why JS logs appear while the screen stays white.
+
+**Fix:** Make the stylesheet non-render-blocking using `media="print"`:
+```html
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?..."
+  media="print"
+  onload="this.media='all'">
+```
+When offline, the fetch fails silently and the page renders immediately with fallback fonts.
+When online, fonts load asynchronously and swap in after first paint.
+
+**Rule:** Never use `<link rel="stylesheet">` for cross-origin resources in an offline-capable
+PWA. Use the `media="print" onload` pattern or self-host the fonts.
+
+---
+
+### Pitfall 2: PWA `start_url` not in the SW precache causes offline cold-start failure
+
+**Symptom:** White/error screen on cold start (force-close + reopen) while offline.
+
+**Root cause:** The web app manifest `start_url` defaulted to `/twixtbot-app/` (the directory
+root). The SW precache contains `/twixtbot-app/index.html` but not `/twixtbot-app/`. On cold
+start, the browser fetches `start_url`, the SW cache misses, and the live network fetch fails
+offline.
+
+**Fix:**
+1. Set `start_url` explicitly in the manifest to the exact precached URL:
+   ```typescript
+   // vite.config.ts
+   manifest: { start_url: '/twixtbot-app/index.html', ... }
+   ```
+2. Add a navigation fallback in the SW for any navigate-mode request not in precache:
+   ```typescript
+   if (request.mode === 'navigate') {
+     const fallback = await caches.match('/twixtbot-app/index.html');
+     if (fallback) return withCOI(fallback);
+   }
+   ```
+
+---
+
+### Pitfall 3: `cacheFirst` SW helper hangs indefinitely offline on cache miss
+
+**Symptom:** "Loading AI model…" screen stuck forever when offline and model not yet cached.
+
+**Root cause:** The `cacheFirst` helper fell through to `fetch()` on a cache miss. When offline,
+`fetch()` does not reject immediately — on iOS it hangs for minutes before timing out. The worker
+never sent an `error` message, so the loading screen stayed frozen.
+
+**Fix:** Wrap the network fetch in `cacheFirst` with try/catch:
+```typescript
+async function cacheFirst(request: Request, cacheName: string): Promise<Response> {
+  const cached = await (await caches.open(cacheName)).match(request);
+  if (cached) return withCOI(cached);
+  try {
+    const fresh = await fetch(request);
+    if (fresh.ok) (await caches.open(cacheName)).put(request, fresh.clone());
+    return withCOI(fresh);
+  } catch {
+    return new Response('Resource not cached and network unavailable', { status: 503 });
+  }
+}
+```
+The worker then receives an ORT load error and sends `{ type: 'error' }` to the main thread,
+which can display a user-friendly message and return to the intro screen.
+
+---
+
+### Pitfall 4: Worker not restarted when returning to intro after a game
+
+**Symptom:** "Loading AI model…" stuck forever when starting a second PvC game after returning
+to the intro screen.
+
+**Root cause:** The Start button handler assumed `!workerAlive` meant the worker was *still
+loading in the background*. But after any completed game, the worker is terminated (to free WASM
+heap memory on iOS) and nothing restarts it. Pressing Start showed the loading screen with nothing
+behind it — stuck forever.
+
+**Fix:** Track whether `initWorker()` is already in progress with a `workerLoading` flag, and
+call `initWorker()` from the Start handler when `!workerAlive && !workerLoading`:
+```typescript
+if (workerAlive) {
+  startNewGame();
+} else {
+  $loadingScreen.classList.remove('hidden');
+  if (!workerLoading) initWorker();  // restart if not already loading
+}
+```
+
+---
+
+### Pitfall 5: ONNX model not cached if user never plays PvC while online
+
+**Symptom:** Model loading fails offline even after opening the app online, if the user only
+used PvP mode or never started a game.
+
+**Root cause:** The model is intentionally excluded from the SW precache (too large). It is only
+cached via `cacheFirst` when the worker first fetches it (i.e. when `initWorker()` is called).
+In PvP mode, `initWorker()` is never called, so the model is never cached.
+
+**Fix:** Trigger a background `fetch(MODEL_URL)` at app startup when not in PvC mode. The SW
+intercepts it, fetches from the network, and caches in `MODEL_CACHE`. This is a no-op if already
+cached (SW returns cached version instantly):
+```typescript
+if (gameMode === 'pvc') {
+  initWorker(); // also warms cache as a side effect
+} else {
+  fetch(MODEL_URL).catch(() => {}); // warm SW model cache silently
+}
+```
+
+---
+
+### Pitfall 6: `manifest.background_color` mismatch causes confusing splash screen
+
+**Symptom:** iOS PWA shows a white (or wrong-colour) splash screen on cold start, making users
+think the app is broken while it is actually loading correctly in the background.
+
+**Root cause:** `background_color` in the PWA manifest was `#f0f4f8` (near-white) while the
+actual app background is dark navy `#16213e`. iOS generates the PWA splash screen from
+`background_color`. The body CSS also used `--bg: #f0f4f8`, creating a white flash during
+initial paint before the dark-background screens render.
+
+**Fix:** Align `background_color`, `theme_color`, and the CSS body `--bg` with the actual app
+background colour:
+```typescript
+// vite.config.ts
+manifest: { background_color: '#16213e', theme_color: '#16213e', ... }
+```
+```css
+/* style.css */
+:root { --bg: #16213e; }
+```
+Also verify the `<meta name="theme-color">` in `index.html` matches.
+
+---
+
+### Pitfall 7: SW `caches.match` with explicit `cacheName` can miss entries
+
+When searching for a cached resource (e.g. `index.html` as a navigation fallback), specifying
+`{ cacheName: PRECACHE }` can fail if the entry ended up in a differently-named cache slot.
+Prefer searching all caches:
+```typescript
+// Fragile — only searches one cache:
+const entry = await caches.match(url, { cacheName: PRECACHE });
+
+// Robust — searches all caches:
+const entry = await caches.match(url);
+```
+
+---
+
+### Debugging offline PWA issues: use the diagnostic log
+
+JS module scripts run even when rendering is blocked (e.g. by render-blocking CSS). When
+diagnosing a white/blank screen:
+
+1. Check diagnostic logs (triple-tap version label) — if `app-start`, `worker-init-start`,
+   `worker-ready` all appear, the app JS is running correctly and the problem is purely visual
+   (rendering, not JS).
+2. `crossOriginIsolated=true` in the log confirms the SW is active and serving COOP/COEP headers.
+3. `sw-controller: none` at app-start means the page loaded without SW control (first install,
+   or SW cleared). Expect a `sw-controllerchange` + reload shortly after.
+4. A gap between `worker-init-start` and `worker-ready` of ~1s = model from SW cache.
+   ~30s = model from network. Missing `worker-ready` entirely = model fetch hung or failed.
