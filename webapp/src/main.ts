@@ -211,6 +211,8 @@ let board: BoardUI;
 let worker: Worker;
 /** True once the worker has sent 'ready'; false after terminate(). */
 let workerAlive = false;
+/** True while initWorker() has been called but 'ready' not yet received. */
+let workerLoading = false;
 /** Set when the user taps Start; gates whether onWorkerReady() begins the game. */
 let userClickedStart = false;
 let gameOver = false;
@@ -244,12 +246,14 @@ type MoveMsg = { x: number; y: number } | 'swap';
 function initWorker(onReady: () => void = onWorkerReady): void {
   diagLog('worker-init-start');
   workerAlive = false;
+  workerLoading = true;
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'ready') {
       workerAlive = true;
+      workerLoading = false;
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
@@ -265,6 +269,7 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       console.error('[Worker]', msg.message);
       if (!workerAlive) {
         // Model failed to load (e.g. offline and not cached). Return to intro after a delay.
+        workerLoading = false;
         const isOffline = !navigator.onLine;
         $loadingMsg.textContent = isOffline
           ? 'Offline — AI model not cached yet. Connect once to enable offline play.'
@@ -282,6 +287,7 @@ function initWorker(onReady: () => void = onWorkerReady): void {
     diagLog(`worker-onerror: ${e.message}`);
     console.error('[Worker] crashed:', e.message);
     workerAlive = false;
+    workerLoading = false;
     if (aiThinking && !gameOver) onAiMoveTimeout();
   };
 
@@ -685,8 +691,9 @@ function init(): void {
       $gameScreen.classList.remove('hidden');
       startNewGame();
     } else {
-      // Model still loading in background — show loading screen until onWorkerReady fires.
+      // Show loading screen; start loading the worker if it isn't already.
       $loadingScreen.classList.remove('hidden');
+      if (!workerLoading) initWorker();
     }
   });
 

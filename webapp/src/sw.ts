@@ -95,7 +95,7 @@ async function handleFetch(request: Request): Promise<Response> {
 
   // 4. Navigation requests (e.g. start_url variants) — fall back to cached index.html
   if (request.mode === 'navigate') {
-    const indexFallback = await caches.match('/twixtbot-app/index.html', { cacheName: PRECACHE });
+    const indexFallback = await caches.match('/twixtbot-app/index.html');
     if (indexFallback) return withCOI(indexFallback);
   }
 
