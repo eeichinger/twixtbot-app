@@ -195,7 +195,7 @@ export class BoardUI {
       e.preventDefault();
       if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      this.dragCell = this._snapToLegal(t.clientX, t.clientY, -this.cellSize * 2);
+      this.dragCell = this._snapToLegal(t.clientX, t.clientY, -Math.max(this.cellSize * 2, 65));
       this.render();
     }, { passive: false });
 
@@ -203,7 +203,7 @@ export class BoardUI {
       e.preventDefault();
       if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      const next = this._snapToLegal(t.clientX, t.clientY, -this.cellSize * 2);
+      const next = this._snapToLegal(t.clientX, t.clientY, -Math.max(this.cellSize * 2, 65));
       // Only re-render when the snapped cell changes (avoids redundant canvas redraws).
       if (next?.x !== this.dragCell?.x || next?.y !== this.dragCell?.y) {
         this.dragCell = next;
