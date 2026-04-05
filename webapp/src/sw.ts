@@ -61,9 +61,13 @@ async function cacheFirst(request: Request, cacheName: string): Promise<Response
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return withCOI(cached);
-  const fresh = await fetch(request);
-  if (fresh.ok) cache.put(request, fresh.clone());
-  return withCOI(fresh);
+  try {
+    const fresh = await fetch(request);
+    if (fresh.ok) cache.put(request, fresh.clone());
+    return withCOI(fresh);
+  } catch {
+    return new Response('Resource not cached and network unavailable', { status: 503 });
+  }
 }
 
 // ── Fetch: single handler, always adds COI headers ───────────────────────────

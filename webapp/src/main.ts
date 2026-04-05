@@ -263,7 +263,16 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       diagLog(`worker-error: ${msg.message}`);
       clearAiMoveTimer();
       console.error('[Worker]', msg.message);
-      $loadingMsg.textContent = `Error: ${msg.message}`;
+      if (!workerAlive) {
+        // Model failed to load (e.g. offline and not cached). Return to intro after a delay.
+        const isOffline = !navigator.onLine;
+        $loadingMsg.textContent = isOffline
+          ? 'Offline — AI model not cached yet. Connect once to enable offline play.'
+          : `Failed to load AI: ${msg.message}`;
+        setTimeout(() => showIntro(), 3000);
+      } else {
+        $loadingMsg.textContent = `Error: ${msg.message}`;
+      }
     } else if (msg.type === 'ping') {
       diagLog(`worker-ping elapsed=${msg.elapsed}ms iters=${msg.iterations}`);
     }
@@ -682,9 +691,13 @@ function init(): void {
   });
 
   diagLog(`game-mode=${gameMode}`);
-  // Pre-load AI model in PvC mode while intro screen is shown.
   if (gameMode === 'pvc') {
+    // Pre-load AI model in PvC mode while intro screen is shown.
     initWorker();
+  } else {
+    // In PvP mode the worker isn't started, but we still warm the SW model cache
+    // in the background so it's available if the user switches to PvC while offline.
+    fetch(MODEL_URL).catch(() => {});
   }
 }
 
