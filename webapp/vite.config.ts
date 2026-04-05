@@ -17,6 +17,7 @@ export default defineConfig({
         name: 'TwixT vs AI',
         short_name: 'TwixT',
         description: 'Play TwixT against a neural net AI — fully offline',
+        start_url: '/twixtbot-app/index.html',
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#f0f4f8',

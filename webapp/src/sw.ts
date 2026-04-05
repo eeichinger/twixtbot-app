@@ -89,6 +89,16 @@ async function handleFetch(request: Request): Promise<Response> {
   // 3. WASM binaries — large, stable, cache indefinitely
   if (/\.wasm(\?|$)/.test(url)) return cacheFirst(request, WASM_CACHE);
 
-  // 4. Anything else — network, but still add COI headers
-  return withCOI(await fetch(request));
+  // 4. Navigation requests (e.g. start_url variants) — fall back to cached index.html
+  if (request.mode === 'navigate') {
+    const indexFallback = await caches.match('/twixtbot-app/index.html', { cacheName: PRECACHE });
+    if (indexFallback) return withCOI(indexFallback);
+  }
+
+  // 5. Anything else — network with COI headers; return offline error if network unavailable
+  try {
+    return withCOI(await fetch(request));
+  } catch {
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
 }
