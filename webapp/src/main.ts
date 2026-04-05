@@ -192,6 +192,7 @@ const $statusText     = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
 const $loadingMsg     = document.getElementById('loading-msg')!;
 const $undoBtn          = document.getElementById('undo-btn')!;
+const $swapBtn          = document.getElementById('swap-btn')!;
 const $newGameBtn       = document.getElementById('new-game-btn')!;
 const $thinkTimeSelect  = document.getElementById('think-time-select') as HTMLSelectElement;
 const boardCanvas     = document.getElementById('board-canvas') as HTMLCanvasElement;
@@ -229,7 +230,8 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
-      diagLog(`worker-result x=${(msg.move as {x:number,y:number})?.x} y=${(msg.move as {x:number,y:number})?.y}`);
+      const moveStr = msg.move === 'swap' ? 'swap' : `x=${(msg.move as {x:number,y:number}).x} y=${(msg.move as {x:number,y:number}).y}`;
+      diagLog(`worker-result ${moveStr}`);
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'computing-done') {
@@ -321,6 +323,13 @@ function onWorkerReady(): void {
   // else: model is silently ready; the Start button handler will begin the game.
 }
 
+/** Show the Swap button only when the human can legally swap (move 2, human's turn). */
+function updateSwapBtn(): void {
+  const canSwap = !gameOver && !aiThinking &&
+    game.turn === HUMAN_COLOR && game.history.length === 1;
+  $swapBtn.classList.toggle('hidden', !canSwap);
+}
+
 function onHumanMove(p: { x: number; y: number }): void {
   if (gameOver || aiThinking || game.turn !== HUMAN_COLOR) return;
   if (!game.legalPlays().contains(p)) return;
@@ -328,6 +337,7 @@ function onHumanMove(p: { x: number; y: number }): void {
   diagLog(`human-move x=${p.x} y=${p.y}`);
   stopHeartbeat();
   game.play(p);
+  updateSwapBtn();
   board.setGame(game, false);
 
   if (game.justWon()) {
@@ -338,6 +348,18 @@ function onHumanMove(p: { x: number; y: number }): void {
     endGame('Draw');
     return;
   }
+
+  requestAiMove();
+}
+
+function onHumanSwap(): void {
+  if (gameOver || aiThinking || game.turn !== HUMAN_COLOR || game.history.length !== 1) return;
+
+  diagLog('human-swap');
+  stopHeartbeat();
+  game.play('swap');
+  updateSwapBtn();
+  board.setGame(game, false);
 
   requestAiMove();
 }
@@ -362,6 +384,7 @@ function onAiMove(moveMsg: MoveMsg): void {
 
   diagLog('human-turn-start');
   $statusText.textContent = 'Your turn (Black)';
+  updateSwapBtn();
   startHeartbeat();  // monitor JS suspension during human turn
 }
 
@@ -372,10 +395,12 @@ function onUndoClick(): void {
     game.undo();
     board.setGame(game, true);
     $statusText.textContent = 'Your turn (Black)';
+    updateSwapBtn();
   } else if (game.history.length === 1) {
     game.undo();
     board.setGame(game, true);
     $statusText.textContent = 'Your turn (Black)';
+    updateSwapBtn();
   }
 }
 
@@ -417,6 +442,7 @@ function startNewGame(): void {
   aiThinking = false;
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
+  $swapBtn.classList.add('hidden');
   board.setGame(game, false);
   requestAiMove();
 }
@@ -493,6 +519,7 @@ function init(): void {
   });
 
   $undoBtn.addEventListener('click',    onUndoClick);
+  $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
 
   // Start button: hide intro, begin game (or show loading if model not ready yet).
