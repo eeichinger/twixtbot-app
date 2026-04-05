@@ -25,10 +25,11 @@ self.addEventListener('install', (event) => {
   const urls: string[] = ((self as unknown as Record<string, unknown>).__WB_MANIFEST as Array<{ url: string }> ?? [])
     .map((e) => e.url);
 
-  // Do NOT call skipWaiting() here.  Skipping waiting fires controllerchange
-  // on all open clients; iOS Safari responds by reloading the page — which
-  // kills the AI computation mid-move.  The new SW will naturally activate
-  // on the user's next visit (once all tabs are closed).
+  // skipWaiting() lets the new SW take control immediately instead of waiting
+  // for all tabs to close.  The client (main.ts) listens for 'controllerchange'
+  // and only reloads the page when no game is in progress, so mid-move
+  // computation is never interrupted.
+  self.skipWaiting();
   event.waitUntil(
     caches.open(PRECACHE).then((cache) => cache.addAll(urls)),
   );

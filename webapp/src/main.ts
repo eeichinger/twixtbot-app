@@ -598,10 +598,13 @@ function init(): void {
     diagLog(`unhandled-rejection: ${e.reason}`);
   });
 
-  // SW controller changes — rules out SW as reload cause
+  // SW controller changes: new SW has activated (skipWaiting fired).
+  // Reload to pick up the new assets — but only when no game is in progress
+  // (userClickedStart is true only while a game is active).
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       diagLog('sw-controllerchange');
+      if (!userClickedStart) window.location.reload();
     });
   }
 
