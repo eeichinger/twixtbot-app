@@ -1,0 +1,18 @@
+name: Force-move tag r2.0.0 to main HEAD
+on:
+  workflow_dispatch:
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Force-move r2.0.0 to main HEAD
+        run: |
+          git tag -f r2.0.0 HEAD
+          git push --force origin r2.0.0
