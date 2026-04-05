@@ -196,6 +196,7 @@ const $statusText      = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
 const $loadingMsg      = document.getElementById('loading-msg')!;
 const $hintBtn         = document.getElementById('hint-btn')!;
+const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
@@ -252,7 +253,8 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
-      diagLog(`worker-result x=${(msg.move as {x:number,y:number})?.x} y=${(msg.move as {x:number,y:number})?.y}`);
+      const moveStr = msg.move === 'swap' ? 'swap' : `x=${(msg.move as {x:number,y:number}).x} y=${(msg.move as {x:number,y:number}).y}`;
+      diagLog(`worker-result ${moveStr}`);
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'computing-done') {
@@ -342,6 +344,13 @@ function onWorkerReady(): void {
   // else: model is silently ready; the Start button handler will begin the game.
 }
 
+/** Show the Swap button only when the human can legally swap (move 2, human's turn). */
+function updateSwapBtn(): void {
+  const canSwap = !gameOver && !aiThinking &&
+    isHumanTurn(game.turn, gameMode) && game.history.length === 1;
+  $swapBtn.classList.toggle('hidden', !canSwap);
+}
+
 function onHumanMove(p: { x: number; y: number }): void {
   if (gameOver || aiThinking) return;
   if (!isHumanTurn(game.turn, gameMode)) return;
@@ -350,6 +359,7 @@ function onHumanMove(p: { x: number; y: number }): void {
   diagLog(`human-move x=${p.x} y=${p.y}`);
   stopHeartbeat();
   game.play(p);
+  updateSwapBtn();
   board.setGame(game, false);
 
   if (game.justWon()) {
@@ -366,6 +376,28 @@ function onHumanMove(p: { x: number; y: number }): void {
 
   if (gameMode === 'pvp') {
     // Other human player takes over.
+    board.setEnabled(true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
+    syncThinkTimeVisibility();
+    startHeartbeat();
+  } else {
+    syncHintButton();
+    syncThinkTimeVisibility();
+    requestAiMove();
+  }
+}
+
+function onHumanSwap(): void {
+  if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode) || game.history.length !== 1) return;
+
+  diagLog('human-swap');
+  stopHeartbeat();
+  game.play('swap');
+  updateSwapBtn();
+  board.setGame(game, false);
+
+  if (gameMode === 'pvp') {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
@@ -409,6 +441,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     workerAlive = false;
     diagLog('worker-terminated (freeing memory for human turn)');
     $statusText.textContent = turnStatusText(game.turn, gameMode);
+    updateSwapBtn();
     syncHintButton();
     syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
@@ -434,6 +467,7 @@ function onUndoClick(): void {
       game.undo();
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(game.turn, gameMode);
+      updateSwapBtn();
       syncHintButton();
       syncThinkTimeVisibility();
     }
@@ -445,10 +479,12 @@ function onUndoClick(): void {
       game.undo();
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
+      updateSwapBtn();
     } else if (game.history.length === 1) {
       game.undo();
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
+      updateSwapBtn();
     }
     syncHintButton();
     syncThinkTimeVisibility();
@@ -491,6 +527,7 @@ function startNewGame(): void {
   aiThinking = false;
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
+  $swapBtn.classList.add('hidden');
   board.setGame(game, false);
   syncThinkTimeVisibility();
 
@@ -584,6 +621,7 @@ function init(): void {
 
   $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
+  $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
 
   // Mode selector buttons on intro screen
