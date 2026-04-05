@@ -528,6 +528,7 @@ function startNewGame(): void {
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
+  $undoBtn.classList.remove('hidden');
   board.setGame(game, false);
   syncThinkTimeVisibility();
 
@@ -547,7 +548,23 @@ function startNewGame(): void {
 
 function endGame(msg: string): void {
   diagLog(`game-over: ${msg}`);
-  showIntro(msg);
+  gameOver = true;
+  userClickedStart = false;
+  stopHeartbeat();
+  clearAiMoveTimer();
+  if (aiThinking) {
+    try { worker.terminate(); } catch { /* ignore */ }
+    workerAlive = false;
+    aiThinking = false;
+    diagLog('worker-terminated (game over)');
+  }
+  setThinking(false);
+  $statusText.textContent = msg;
+  board.setEnabled(false);
+  $hintBtn.classList.add('hidden');
+  $swapBtn.classList.add('hidden');
+  $undoBtn.classList.add('hidden');
+  $thinkTimeSelect.classList.add('hidden');
 }
 
 function setThinking(thinking: boolean): void {
