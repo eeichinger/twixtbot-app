@@ -111,6 +111,58 @@ describe('NeuralMCTS — does not mutate game state', () => {
 });
 
 // -------------------------------------------------------------------------
+// Smart-init (FPU) — Q pre-seeding
+// -------------------------------------------------------------------------
+
+describe('NeuralMCTS — smart-init Q pre-seeding', () => {
+  it('unvisited children have Q pre-seeded to the SAP score, not 0', async () => {
+    // SAP always returns score=0.7.  After exactly 1 trial:
+    //   • one child idx is visited → Q[idx] is overwritten by backprop (= −0.7)
+    //   • all other legal children remain at the pre-seeded value (0.7)
+    const SAP_SCORE = 0.7;
+    async function fixedScoreSap(_game: Game): Promise<[number, Float32Array]> {
+      return [SAP_SCORE, new Float32Array(NUM_MOVES)]; // uniform policy, fixed score
+    }
+
+    const mcts = new NeuralMCTS(fixedScoreSap, 1.0, 0.0);
+    await mcts.mcts(new Game(), /* maxTrials */ 1, 30_000);
+
+    const root = mcts.root!;
+    expect(root).not.toBeNull();
+    expect(root.lmNonzero).not.toBeNull();
+
+    // Exactly one child must have been visited (N=1), the rest N=0.
+    const visitedIndices = root.lmNonzero!.filter(i => root.N[i] > 0);
+    const unvisitedIndices = root.lmNonzero!.filter(i => root.N[i] === 0);
+    expect(visitedIndices.length).toBe(1);
+    expect(unvisitedIndices.length).toBeGreaterThan(0);
+
+    // Unvisited children must carry the pre-seeded score, not 0.
+    for (const i of unvisitedIndices) {
+      expect(root.Q[i]).toBeCloseTo(SAP_SCORE, 10);
+    }
+
+    // The visited child must have a Q value set by backprop (= −child.score = −0.7),
+    // not the pre-seeded value.
+    const visitedIdx = visitedIndices[0];
+    expect(root.Q[visitedIdx]).toBeCloseTo(-SAP_SCORE, 10);
+  });
+
+  it('Q pre-seeding does not alter total visit counts or return type', async () => {
+    // Regression: smart_init must not break the existing visit-count invariant.
+    const trials = 8;
+    async function sap(_game: Game): Promise<[number, Float32Array]> {
+      return [0.5, new Float32Array(NUM_MOVES)];
+    }
+    const mcts = new NeuralMCTS(sap, 1.0, 0.0);
+    const result = await mcts.mcts(new Game(), trials, 30_000) as Float64Array;
+    expect(result).toBeInstanceOf(Float64Array);
+    const total = Array.from(result).reduce((a, b) => a + b, 0);
+    expect(total).toBe(trials);
+  });
+});
+
+// -------------------------------------------------------------------------
 // Forced win detection
 // -------------------------------------------------------------------------
 

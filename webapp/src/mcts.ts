@@ -128,6 +128,15 @@ export class NeuralMCTS {
     const [score, policyLogits] = await this.sap(game);
     leaf.score = score;
 
+    // Smart-init (FPU): pre-seed Q with the position's own score so that
+    // unvisited children inherit the neural network's value estimate rather
+    // than a neutral 0 prior.  The first backprop visit overwrites this value
+    // (running-average update at N=1 gives Q = value), so the seeding only
+    // influences which child is selected before it has been visited.
+    for (const i of leaf.lmNonzero) {
+      leaf.Q[i] = score;
+    }
+
     // softmax over legal moves only
     let maxLogit = -Infinity;
     for (const i of leaf.lmNonzero) {

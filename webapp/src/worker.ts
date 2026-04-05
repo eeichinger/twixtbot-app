@@ -16,8 +16,9 @@
 
 import { OnnxPlayer } from './onnx-player.js';
 import { NeuralMCTS } from './mcts.js';
-import { replayHistory, pt } from './twixt.js';
-import type { MoveRecord } from './twixt.js';
+import { replayHistory, pt, BLACK } from './twixt.js';
+import type { MoveRecord, Point } from './twixt.js';
+import { wantSwap } from './swapmodel.js';
 
 type MoveMsg = { x: number; y: number } | 'swap';
 
@@ -85,6 +86,18 @@ self.onmessage = async (e: MessageEvent) => {
       const timeLimitMs: number = msg.timeLimitMs ?? defaultTimeLimitMs;
       const game = replayHistory(history);
       const turn = game.turn;
+
+      // Swap rule: when the AI is playing as BLACK at move 2, use the fitted
+      // swap model to decide whether to take WHITE's first peg.  MCTS cannot
+      // reason about this because 'swap' is not in the 528-action policy array.
+      if (turn === BLACK && game.history.length === 1) {
+        const firstPeg = game.history[0];
+        if (firstPeg !== 'swap' && wantSwap(firstPeg as Point)) {
+          self.postMessage({ type: 'result', move: 'swap' });
+          isProcessing = false;
+          return;
+        }
+      }
 
       // Heartbeat: every 2s send a ping to main thread so it can confirm
       // the worker is still alive. Pings stop when MCTS finishes or is killed.
