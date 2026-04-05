@@ -314,8 +314,8 @@ export class NeuralMCTS {
     for (let i = rootHist.length; i < hist.length; i++) {
       const m = hist[i];
       if (m === 'swap') { node = null; break; }  // swap has no policy index
-      const idx   = policyPointToIndex(g.turn, m as Point);
-      const child = node!.subnodes[idx];
+      const idx            = policyPointToIndex(g.turn, m as Point);
+      const child: EvalNode | null = node!.subnodes[idx];
       if (!child) { node = null; break; }
       g.play(m);
       node = child;
