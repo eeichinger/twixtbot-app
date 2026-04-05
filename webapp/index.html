@@ -12,7 +12,9 @@
 
 <link rel="stylesheet" href="/src/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Non-blocking font load: media="print" prevents render-blocking; onload applies to all media.
+       If offline, the fetch simply fails and the page renders with fallback fonts immediately. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&display=swap" media="print" onload="this.media='all'">
   <!-- screen.width is physical device CSS pixels — unaffected by Safari
        "Request Desktop Website" viewport scaling. Adds class before paint. -->
   <script>if(window.screen.width<=430)document.documentElement.classList.add('phone-screen');</script>
