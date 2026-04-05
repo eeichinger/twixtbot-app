@@ -30,19 +30,20 @@ import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt } from './twixt.js';
 
 // Wong color-blind-safe palette: blue (#0072B2) for human (BLACK),
 // orange (#E69F00) for AI (WHITE).  Works for deuteranopia, protanopia,
-// tritanopia.  Background is bright white/cream.
+// tritanopia.  Peg/link hues are unchanged; only bg/grid/node adapted for
+// dark blueprint theme.
 const COLORS = {
-  bg:              '#f0f4f8',
-  grid:            '#b0bec5',
+  bg:              '#162540',
+  grid:            'rgba(100,160,220,0.12)',
   // Left/right strips = BLACK's goal edges → tinted blue
-  borderZoneBlack: 'rgba(0, 114, 178, 0.15)',
+  borderZoneBlack: 'rgba(86, 180, 233, 0.18)',
   // Top/bottom strips = WHITE's goal edges → tinted orange
-  borderZoneWhite: 'rgba(230, 159, 0, 0.15)',
+  borderZoneWhite: 'rgba(230, 159, 0, 0.20)',
   // Accent lines along goal edges
   borderLineBlack: '#0072b2',
   borderLineWhite: '#e69f00',
-  node:            '#90a4ae',
-  nodeHover:       '#0072b2',
+  node:            'rgba(100,160,220,0.28)',
+  nodeHover:       '#5dade2',
   // Human player = blue
   pegBlack:        '#0057b8',
   pegBlackRim:     '#56b4e9',

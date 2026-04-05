@@ -198,27 +198,40 @@ html, body {
   justify-content: center;
   height: 100%;
   gap: 20px;
+  background: #1b2f4e;
+  background-image:
+    linear-gradient(rgba(100,160,220,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,160,220,0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 .loading-logo {
-  font-size: 2.5rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--accent);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(52px, 18vw, 72px);
+  font-weight: 400;
+  letter-spacing: 6px;
+  color: #e8f4fd;
+  text-shadow: 0 0 30px rgba(100,160,220,0.3);
 }
 
 .loading-spinner,
 .thinking-spinner {
   width: 40px; height: 40px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
+  border: 3px solid rgba(100,160,220,0.2);
+  border-top-color: #5dade2;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-#loading-msg { color: var(--muted); font-size: 0.9rem; }
+#loading-msg {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(100,160,220,0.6);
+}
 
 /* -------------------------------------------------------------------------
    Game screen
@@ -227,6 +240,11 @@ html, body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: #1b2f4e;
+  background-image:
+    linear-gradient(rgba(100,160,220,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,160,220,0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 .hidden { display: none !important; }
@@ -238,35 +256,41 @@ html, body {
   gap: 8px;
   padding: 0 12px;
   height: var(--header-h);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: #0f1929;
+  border-bottom: 1px solid rgba(100,160,220,0.2);
   flex-shrink: 0;
 }
 
 #status-text {
   flex: 1;
-  font-size: 0.95rem;
-  font-weight: 500;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #e8f4fd;
 }
 
 #status-bar button,
 #think-time-select {
   padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
   background: transparent;
-  color: var(--text);
-  font-size: 0.85rem;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
   cursor: pointer;
   transition: background 0.15s;
 }
 #status-bar button:hover,
-#think-time-select:hover { background: rgba(0,0,0,0.05); }
-#status-bar button:active { background: rgba(0,0,0,0.1); }
+#think-time-select:hover { background: rgba(100,160,220,0.1); }
+#status-bar button:active { background: rgba(100,160,220,0.2); }
 #think-time-select {
   padding-right: 6px;
   appearance: none;
   -webkit-appearance: none;
+  color-scheme: dark;
 }
 
 /* Footer */
@@ -277,12 +301,14 @@ html, body {
 }
 
 #game-footer a {
-  font-size: 0.7rem;
-  color: var(--muted);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.35);
   text-decoration: none;
 }
 
-#game-footer a:hover { text-decoration: underline; }
+#game-footer a:hover { color: rgba(100,160,220,0.65); text-decoration: underline; }
 
 /* Board area */
 #board-container {
@@ -311,9 +337,12 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  background: rgba(240,244,248,0.88);
-  color: var(--text);
-  font-size: 0.95rem;
+  background: rgba(15,25,45,0.88);
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 
@@ -326,25 +355,27 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 24px;
-  background: rgba(240,244,248,0.95);
+  background: rgba(15,25,45,0.94);
 }
 
 #gameover-msg {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.8rem;
+  letter-spacing: 4px;
+  color: #e8f4fd;
 }
 
 #gameover-new-btn {
   padding: 12px 32px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  background: transparent;
+  color: #e8f4fd;
+  border: 1px solid rgba(100,160,220,0.5);
+  border-radius: 2px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 4px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
-#gameover-new-btn:hover  { opacity: 0.85; }
-#gameover-new-btn:active { opacity: 0.7; }
+#gameover-new-btn:hover  { background: rgba(100,160,220,0.1); }
+#gameover-new-btn:active { background: rgba(100,160,220,0.2); }
