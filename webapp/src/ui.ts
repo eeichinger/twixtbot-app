@@ -109,7 +109,7 @@ export class BoardUI {
     this.canvas.width  = size;
     this.canvas.height = size;
 
-    const margin = Math.max(size * 0.04, 12);
+    const margin = Math.max(size * 0.055, 14);
     this.padLeft  = margin;
     this.padTop   = margin;
     this.cellSize = (size - 2 * margin) / (SIZE - 1);
@@ -245,10 +245,38 @@ export class BoardUI {
 
     this._drawBorderZones();
     this._drawGrid();
+    this._drawLabels();
     this._drawLinks();
     this._drawNodes(pegR);
     // Offset peg preview drawn last so it appears on top of everything.
     if (this.dragCell) this._drawDragCallout(pegR);
+  }
+
+  private _drawLabels(): void {
+    const { ctx, canvas, cellSize } = this;
+    const fontSize = Math.max(Math.round(cellSize * 0.5), 7);
+    ctx.font         = `${fontSize}px 'Courier Prime', monospace`;
+    ctx.fillStyle    = 'rgba(100,160,220,0.5)';
+    ctx.textBaseline = 'middle';
+
+    const cols    = 'ABCDEFGHIJKLMNOPQRSTUVWX';
+    const halfPad = this.padLeft / 2;
+
+    // Column labels (A–X) above and below the board
+    ctx.textAlign = 'center';
+    for (let x = 0; x < SIZE; x++) {
+      const [cx] = this._toCanvas(pt(x, 0));
+      ctx.fillText(cols[x], cx, halfPad);                  // top
+      ctx.fillText(cols[x], cx, canvas.height - halfPad);  // bottom
+    }
+
+    // Row labels (1–24) left and right of the board
+    for (let y = 0; y < SIZE; y++) {
+      const [, cy] = this._toCanvas(pt(0, y));
+      ctx.textAlign = 'center';
+      ctx.fillText(String(y + 1), halfPad, cy);                  // left
+      ctx.fillText(String(y + 1), canvas.width - halfPad, cy);   // right
+    }
   }
 
   private _drawBorderZones(): void {
