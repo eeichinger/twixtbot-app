@@ -86,28 +86,13 @@ html, body {
 #intro-screen .bp-logo-cap { font-size: 1em; }
 #intro-screen .bp-logo-sm  { font-size: 0.62em; vertical-align: baseline; }
 
-/* Subtitle row with flanking rules */
+/* Subtitle row — single continuous rule */
 .bp-subtitle-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   width: 100%;
-  margin-bottom: 6px;
-}
-.bp-rule-h {
-  flex: 1;
   height: 1px;
   background: rgba(100,160,220,0.3);
+  margin-bottom: 6px;
 }
-#intro-subtitle {
-  font-family: 'Courier Prime', monospace;
-  font-size: 9px;
-  color: rgba(100,160,220,0.7);
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-#intro-subtitle:empty { display: none; }
 
 /* Tagline */
 .bp-tagline {
@@ -191,7 +176,6 @@ html, body {
 /* Phone-sized screens (screen.width ≤ 430px, set via inline script in <head>).
    Uses screen.width — not viewport width — so it works even when Safari
    "Request Desktop Website" inflates the viewport to ~980px. */
-.phone-screen #intro-subtitle    { font-size: 12px; letter-spacing: 2px; }
 .phone-screen .bp-tagline        { font-size: 14px; }
 .phone-screen .mode-btn          { font-size: 14px; letter-spacing: 1.5px; }
 .phone-screen #start-btn         { font-size: 22px; }

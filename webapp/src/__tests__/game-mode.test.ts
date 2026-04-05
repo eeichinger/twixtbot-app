@@ -10,7 +10,6 @@ import { BLACK, WHITE } from '../twixt.js';
 import {
   isHumanTurn,
   turnStatusText,
-  defaultSubtitle,
   resultMessage,
 } from '../game-mode.js';
 
@@ -58,20 +57,6 @@ describe('turnStatusText — PvC mode', () => {
     // In PvC this function is only called when it genuinely is the human's
     // turn, but the output should be consistent regardless.
     expect(turnStatusText(WHITE, 'pvc')).toBe('Your turn (Blue)');
-  });
-});
-
-// -------------------------------------------------------------------------
-// defaultSubtitle
-// -------------------------------------------------------------------------
-
-describe('defaultSubtitle', () => {
-  it('returns "vs Computer" for PvC mode', () => {
-    expect(defaultSubtitle('pvc')).toBe('vs Computer');
-  });
-
-  it('returns "vs Player" for PvP mode', () => {
-    expect(defaultSubtitle('pvp')).toBe('vs Player');
   });
 });
 

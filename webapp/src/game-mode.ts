@@ -44,11 +44,6 @@ export function turnStatusText(turn: number, mode: GameMode): string {
   return 'Your turn (Blue)';
 }
 
-/** Default intro subtitle shown before any game has been played. */
-export function defaultSubtitle(mode: GameMode): string {
-  return mode === 'pvp' ? 'vs Player' : 'vs Computer';
-}
-
 /**
  * Result message shown on the intro screen after a game ends.
  *

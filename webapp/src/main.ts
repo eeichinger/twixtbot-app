@@ -13,7 +13,7 @@ import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
-  isHumanTurn, turnStatusText, defaultSubtitle, resultMessage,
+  isHumanTurn, turnStatusText, resultMessage,
   type GameMode,
 } from './game-mode.js';
 
@@ -504,8 +504,6 @@ function showIntro(result?: string): void {
   gameOver = true;
   userClickedStart = false;
   setThinking(false);
-  const subtitleEl = document.getElementById('intro-subtitle');
-  if (subtitleEl) subtitleEl.textContent = result ?? defaultSubtitle(gameMode);
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement | null;
   if (startBtn) startBtn.textContent = result ? 'Play Again' : 'Start Game';
   $gameScreen.classList.add('hidden');
@@ -651,9 +649,6 @@ function init(): void {
       saveGameMode(gameMode);
       document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      // Update subtitle to the mode default (clears any previous game result text).
-      const sub = document.getElementById('intro-subtitle');
-      if (sub) sub.textContent = defaultSubtitle(gameMode);
       syncThinkTimeVisibility();
       // Pre-load AI model when user switches to PvC (if not already loading/loaded).
       if (gameMode === 'pvc' && !workerAlive) initWorker();
@@ -663,9 +658,6 @@ function init(): void {
   // Restore persisted mode selection visually
   document.querySelector<HTMLButtonElement>(`.mode-btn[data-mode="${gameMode}"]`)
     ?.classList.add('active');
-  // Sync subtitle with loaded mode
-  const sub = document.getElementById('intro-subtitle');
-  if (sub) sub.textContent = defaultSubtitle(gameMode);
 
   // Start button: hide intro, begin game.
   document.getElementById('start-btn')?.addEventListener('click', () => {
