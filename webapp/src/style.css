@@ -101,9 +101,9 @@ html, body {
 }
 #intro-subtitle {
   font-family: 'Courier Prime', monospace;
-  font-size: 12px;
+  font-size: 9px;
   color: rgba(100,160,220,0.7);
-  letter-spacing: 2px;
+  letter-spacing: 3px;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -112,7 +112,7 @@ html, body {
 /* Tagline */
 .bp-tagline {
   font-family: 'Courier Prime', monospace;
-  font-size: 14px;
+  font-size: 10px;
   font-style: italic;
   color: rgba(100,160,220,0.5);
   letter-spacing: 1px;
@@ -144,9 +144,9 @@ html, body {
   border: none;
   cursor: pointer;
   font-family: 'Courier Prime', monospace;
-  font-size: 14px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
   text-transform: uppercase;
   color: rgba(100,160,220,0.4);
   transition: background 0.15s, color 0.15s;
@@ -177,7 +177,7 @@ html, body {
 
 .intro-attribution {
   font-family: 'Courier Prime', monospace;
-  font-size: 12px;
+  font-size: 8px;
   color: rgba(100,160,220,0.3);
   letter-spacing: 1px;
   text-align: center;
@@ -188,14 +188,14 @@ html, body {
   text-decoration: underline;
 }
 
-/* Tablet and up: shrink decorative text back to compact sizes */
-@media (min-width: 431px) {
-  #intro-subtitle    { font-size: 9px;  letter-spacing: 3px; }
-  .bp-tagline        { font-size: 10px; }
-  .mode-btn          { font-size: 9px;  letter-spacing: 2px; }
-  #start-btn         { font-size: 18px; }
-  .intro-attribution { font-size: 8px; }
-}
+/* Phone-sized screens (screen.width ≤ 430px, set via inline script in <head>).
+   Uses screen.width — not viewport width — so it works even when Safari
+   "Request Desktop Website" inflates the viewport to ~980px. */
+.phone-screen #intro-subtitle    { font-size: 12px; letter-spacing: 2px; }
+.phone-screen .bp-tagline        { font-size: 14px; }
+.phone-screen .mode-btn          { font-size: 14px; letter-spacing: 1.5px; }
+.phone-screen #start-btn         { font-size: 22px; }
+.phone-screen .intro-attribution { font-size: 12px; }
 
 /* -------------------------------------------------------------------------
    Loading screen
