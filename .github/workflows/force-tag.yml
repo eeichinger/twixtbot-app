@@ -1,6 +1,9 @@
 name: Force-move tag r2.0.0 to main HEAD
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   retag:
