@@ -178,6 +178,21 @@ html, body {
   -webkit-appearance: none;
 }
 
+/* Footer */
+#game-footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 4px 0 6px;
+}
+
+#game-footer a {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+#game-footer a:hover { text-decoration: underline; }
+
 /* Board area */
 #board-container {
   flex: 1;
