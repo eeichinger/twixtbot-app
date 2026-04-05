@@ -43,21 +43,21 @@ describe('isHumanTurn — PvC mode', () => {
 // -------------------------------------------------------------------------
 
 describe('turnStatusText — PvP mode', () => {
-  it('shows "White\'s turn" when WHITE is to move', () => {
-    expect(turnStatusText(WHITE, 'pvp')).toBe("White's turn");
+  it('shows "Orange\'s turn" when WHITE (orange) is to move', () => {
+    expect(turnStatusText(WHITE, 'pvp')).toBe("Orange's turn");
   });
 
-  it('shows "Black\'s turn" when BLACK is to move', () => {
-    expect(turnStatusText(BLACK, 'pvp')).toBe("Black's turn");
+  it('shows "Blue\'s turn" when BLACK (blue) is to move', () => {
+    expect(turnStatusText(BLACK, 'pvp')).toBe("Blue's turn");
   });
 });
 
 describe('turnStatusText — PvC mode', () => {
   it('always shows the human-turn message regardless of whose turn it is', () => {
-    expect(turnStatusText(BLACK, 'pvc')).toBe('Your turn (Black)');
+    expect(turnStatusText(BLACK, 'pvc')).toBe('Your turn (Blue)');
     // In PvC this function is only called when it genuinely is the human's
     // turn, but the output should be consistent regardless.
-    expect(turnStatusText(WHITE, 'pvc')).toBe('Your turn (Black)');
+    expect(turnStatusText(WHITE, 'pvc')).toBe('Your turn (Blue)');
   });
 });
 
@@ -94,8 +94,8 @@ describe('resultMessage — BLACK wins', () => {
     expect(resultMessage(BLACK, 'pvc')).toBe('You win!');
   });
 
-  it('returns "Black wins!" in PvP mode', () => {
-    expect(resultMessage(BLACK, 'pvp')).toBe('Black wins!');
+  it('returns "Blue wins!" in PvP mode', () => {
+    expect(resultMessage(BLACK, 'pvp')).toBe('Blue wins!');
   });
 });
 
@@ -104,7 +104,7 @@ describe('resultMessage — WHITE wins', () => {
     expect(resultMessage(WHITE, 'pvc')).toBe('AI wins');
   });
 
-  it('returns "White wins!" in PvP mode', () => {
-    expect(resultMessage(WHITE, 'pvp')).toBe('White wins!');
+  it('returns "Orange wins!" in PvP mode', () => {
+    expect(resultMessage(WHITE, 'pvp')).toBe('Orange wins!');
   });
 });

@@ -40,8 +40,8 @@ export function isHumanTurn(turn: number, mode: GameMode): boolean {
 
 /** Status-bar text to display for the current turn. */
 export function turnStatusText(turn: number, mode: GameMode): string {
-  if (mode === 'pvp') return turn === BLACK ? "Black's turn" : "White's turn";
-  return 'Your turn (Black)';
+  if (mode === 'pvp') return turn === BLACK ? "Blue's turn" : "Orange's turn";
+  return 'Your turn (Blue)';
 }
 
 /** Default intro subtitle shown before any game has been played. */
@@ -56,6 +56,6 @@ export function defaultSubtitle(mode: GameMode): string {
  */
 export function resultMessage(winner: number | null, mode: GameMode): string {
   if (winner === null) return 'Draw';
-  if (mode === 'pvp') return winner === BLACK ? 'Black wins!' : 'White wins!';
+  if (mode === 'pvp') return winner === BLACK ? 'Blue wins!' : 'Orange wins!';
   return winner === BLACK ? 'You win!' : 'AI wins';
 }
