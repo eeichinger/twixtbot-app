@@ -339,3 +339,83 @@ This pattern is consistently observed in logs as multiple rapid
 | `2026-04-04-f` | Intro screen + return to intro after game end | UX improvement |
 | `2026-04-04-g` | Terminate worker after each AI move (fixed) | Confirms deferred-kill — crash still happens after termination |
 | `2026-04-04-h` | Switch to `onnxruntime-web/wasm` (12MB binary); `enableCpuMemArena: false` | **FIXED** — game runs stably on iOS. The combination of halving the WASM binary (24MB JSEP → 12MB standard) and disabling the memory arena eliminated the peak memory that was triggering the deferred OS kill. |
+
+---
+
+## Service Worker Cache Busting
+
+### Problem
+
+The SW used `injectManifest` strategy with precached hashed assets but did **not** call
+`skipWaiting()`. New SWs waited until all tabs were closed before activating. On iOS Safari
+this meant users ran old cached CSS/JS for days even after a fresh deploy and manual
+tab-closing. Chrome was unaffected (faster SW lifecycle management).
+
+### Solution: skipWaiting + conditional reload
+
+`sw.ts` now calls `self.skipWaiting()` in the install handler. The new SW activates
+immediately. The client (`main.ts`) listens for the resulting `controllerchange` event and
+calls `window.location.reload()` **only when `userClickedStart === false`** (i.e. the user
+is on the intro screen, not mid-game). This gives instant cache busting with zero risk of
+disrupting an active AI computation.
+
+```typescript
+// sw.ts — install handler
+self.skipWaiting();
+
+// main.ts — controllerchange listener
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  if (!userClickedStart) window.location.reload();
+});
+```
+
+**Note:** The very first deploy of the `skipWaiting()` change still requires a manual cache
+clear, because the old SW (without `skipWaiting`) is what runs that one time. All subsequent
+deploys are automatic.
+
+---
+
+## Safari "Request Desktop Website" Viewport Quirk
+
+### Problem
+
+iOS Safari has a per-site (and global) **"Request Desktop Website"** toggle. When enabled,
+Safari inflates the CSS viewport to ~980px while the physical screen remains 393px (iPhone 15).
+
+This breaks CSS `@media (max-width: 430px)` and `@media (min-width: 431px)` queries —
+they see the fake 980px viewport, not the real screen width, so phone-targeted font sizes
+never apply. Chrome on the same device works correctly because it uses the real viewport.
+
+Symptoms: font sizes look correct in Chrome but remain at tablet/desktop compact sizes in
+Safari, even after clearing all caches.
+
+### Solution: `window.screen.width` instead of CSS viewport queries
+
+`screen.width` always returns the **physical device CSS pixel width** regardless of Safari's
+viewport scaling. An inline script in `<head>` (runs before CSS paint, no FOUC) adds a
+class to `<html>` based on the real screen size:
+
+```html
+<!-- index.html <head> -->
+<script>if(window.screen.width<=430)document.documentElement.classList.add('phone-screen');</script>
+```
+
+CSS then scopes phone-size rules to `.phone-screen` instead of a media query:
+
+```css
+.phone-screen .mode-btn        { font-size: 14px; letter-spacing: 1.5px; }
+.phone-screen .bp-tagline      { font-size: 14px; }
+.phone-screen .intro-attribution { font-size: 12px; }
+/* etc. */
+```
+
+**Rule:** Never use CSS viewport-width media queries for phone vs. tablet detection in this
+app. Always use `screen.width` via the `phone-screen` class mechanism.
+
+### Touch drag offset
+
+The board's touch drag callout offset (`-this.cellSize * 2`) was too small on iPhone
+(~31px, less than a fingertip width of ~44px) while fine on the Fire HD 10 tablet (~60px).
+
+Fix: `Math.max(this.cellSize * 2, 65)` — a 65px floor ensures the preview peg always
+clears the fingertip on small-cell boards without meaningfully changing the tablet experience.
