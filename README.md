@@ -1,4 +1,4 @@
-# TwixT vs AI
+# TwixTBot-App
 
 A Progressive Web App (PWA) that lets you play the board game **TwixT** against a
 neural-network AI — or against another human on the same device — directly in your
