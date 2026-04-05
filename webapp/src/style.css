@@ -72,17 +72,6 @@ html, body {
 .bp-corner.bl { bottom: 20px; left: 20px;  border-width: 0 0 2px 2px; }
 .bp-corner.br { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; }
 
-/* Reference number */
-.bp-ref {
-  font-family: 'Courier Prime', monospace;
-  font-size: 8px;
-  color: rgba(100,160,220,0.5);
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  align-self: flex-start;
-  margin-bottom: 12px;
-}
-
 /* Logo */
 #intro-screen .loading-logo {
   font-family: 'Bebas Neue', sans-serif;
@@ -94,6 +83,8 @@ html, body {
   text-shadow: 0 0 30px rgba(100,160,220,0.3);
   margin-bottom: 8px;
 }
+#intro-screen .bp-logo-cap { font-size: 1em; }
+#intro-screen .bp-logo-sm  { font-size: 0.62em; vertical-align: baseline; }
 
 /* Subtitle row with flanking rules */
 .bp-subtitle-line {
@@ -116,6 +107,7 @@ html, body {
   text-transform: uppercase;
   white-space: nowrap;
 }
+#intro-subtitle:empty { display: none; }
 
 /* Tagline */
 .bp-tagline {
