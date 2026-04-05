@@ -11,20 +11,67 @@
   <title>TwixT vs AI</title>
 
 <link rel="stylesheet" href="/src/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="app">
     <!-- Intro screen (shown by default; also shown after game ends) -->
     <div id="intro-screen" style="position:relative">
+      <div class="bp-corner tl"></div>
+      <div class="bp-corner tr"></div>
+      <div class="bp-corner bl"></div>
+      <div class="bp-corner br"></div>
+
+      <div class="bp-ref">REF: 3M-TX-1962 &middot; SCALE 1:1</div>
+
       <div class="loading-logo">TwixT</div>
-      <div id="intro-subtitle">vs Computer</div>
+
+      <div class="bp-subtitle-line">
+        <span class="bp-rule-h"></span>
+        <span id="intro-subtitle">vs Computer</span>
+        <span class="bp-rule-h"></span>
+      </div>
+
+      <p class="bp-tagline">An ingenious strategy game for two</p>
+
+      <svg class="bp-diagram" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g opacity="0.3" fill="rgba(100,160,220,0.6)">
+          <circle cx="12" cy="12" r="2"/><circle cx="36" cy="12" r="2"/><circle cx="60" cy="12" r="2"/>
+          <circle cx="84" cy="12" r="2"/><circle cx="108" cy="12" r="2"/>
+          <circle cx="12" cy="36" r="2"/><circle cx="36" cy="36" r="2"/><circle cx="60" cy="36" r="2"/>
+          <circle cx="84" cy="36" r="2"/><circle cx="108" cy="36" r="2"/>
+          <circle cx="12" cy="60" r="2"/><circle cx="36" cy="60" r="2"/><circle cx="60" cy="60" r="2"/>
+          <circle cx="84" cy="60" r="2"/><circle cx="108" cy="60" r="2"/>
+          <circle cx="12" cy="84" r="2"/><circle cx="36" cy="84" r="2"/><circle cx="60" cy="84" r="2"/>
+          <circle cx="84" cy="84" r="2"/><circle cx="108" cy="84" r="2"/>
+          <circle cx="12" cy="108" r="2"/><circle cx="36" cy="108" r="2"/><circle cx="60" cy="108" r="2"/>
+          <circle cx="84" cy="108" r="2"/><circle cx="108" cy="108" r="2"/>
+        </g>
+        <line x1="36" y1="84" x2="60" y2="60" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+        <line x1="60" y1="60" x2="84" y2="36" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+        <line x1="36" y1="60" x2="60" y2="84" stroke="#5dade2" stroke-width="1.5" opacity="0.8"/>
+        <line x1="60" y1="36" x2="84" y2="60" stroke="#5dade2" stroke-width="1.5" opacity="0.8"/>
+        <circle cx="36" cy="84" r="5" fill="#e74c3c"/>
+        <circle cx="60" cy="60" r="5" fill="#e74c3c"/>
+        <circle cx="84" cy="36" r="5" fill="#e74c3c"/>
+        <circle cx="36" cy="60" r="5" fill="#5dade2"/>
+        <circle cx="60" cy="84" r="5" fill="#5dade2"/>
+        <circle cx="84" cy="60" r="5" fill="#5dade2"/>
+        <circle cx="60" cy="36" r="5" fill="#5dade2"/>
+        <defs>
+          <filter id="glow-r"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glow-b"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+      </svg>
+
       <div id="mode-selector">
         <button class="mode-btn active" data-mode="pvc">vs Computer</button>
         <button class="mode-btn"        data-mode="pvp">vs Player</button>
       </div>
       <button id="start-btn">Start Game</button>
       <p class="intro-attribution">Based on <a href="https://github.com/BonyJordan/twixtbot" target="_blank" rel="noopener">twixtbot</a> by Jordan Lampe &mdash; MIT License</p>
-      <span id="intro-version" title="Tap 3× for diagnostics" style="position:absolute;bottom:12px;right:12px;font-size:0.7rem;color:#94a3b8;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
+      <span id="intro-version" title="Tap 3× for diagnostics" style="position:absolute;bottom:12px;right:12px;font-size:0.7rem;color:rgba(100,160,220,0.4);cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
     </div>
 
     <!-- Loading screen (hidden; shown only if model not yet ready when Start is pressed) -->

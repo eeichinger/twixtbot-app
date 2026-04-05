@@ -27,7 +27,7 @@ html, body {
 #app { width: 100%; height: 100%; }
 
 /* -------------------------------------------------------------------------
-   Intro screen
+   Intro screen — Blueprint / Technical design
    ------------------------------------------------------------------------- */
 #intro-screen {
   display: flex;
@@ -35,65 +35,164 @@ html, body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 24px;
+  gap: 0;
+  padding: 28px 32px;
+  /* Dark navy blueprint background */
+  background-color: #1b2f4e;
+  background-image:
+    linear-gradient(rgba(100,160,220,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,160,220,0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
+/* Radial vignette overlay */
+#intro-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, transparent 30%, rgba(5,15,35,0.65) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* All direct children sit above vignette */
+#intro-screen > * { position: relative; z-index: 1; }
+
+/* Corner registration marks */
+.bp-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: rgba(100,160,220,0.4);
+  border-style: solid;
+  z-index: 2;
+}
+.bp-corner.tl { top: 20px;    left: 20px;  border-width: 2px 0 0 2px; }
+.bp-corner.tr { top: 20px;    right: 20px; border-width: 2px 2px 0 0; }
+.bp-corner.bl { bottom: 20px; left: 20px;  border-width: 0 0 2px 2px; }
+.bp-corner.br { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; }
+
+/* Reference number */
+.bp-ref {
+  font-family: 'Courier Prime', monospace;
+  font-size: 8px;
+  color: rgba(100,160,220,0.5);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  align-self: flex-start;
+  margin-bottom: 12px;
+}
+
+/* Logo */
+#intro-screen .loading-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(52px, 18vw, 72px);
+  font-weight: 400;
+  letter-spacing: 6px;
+  color: #e8f4fd;
+  line-height: 1;
+  text-shadow: 0 0 30px rgba(100,160,220,0.3);
+  margin-bottom: 8px;
+}
+
+/* Subtitle row with flanking rules */
+.bp-subtitle-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 6px;
+}
+.bp-rule-h {
+  flex: 1;
+  height: 1px;
+  background: rgba(100,160,220,0.3);
+}
 #intro-subtitle {
-  color: var(--muted);
-  font-size: 1.1rem;
-  letter-spacing: 0.05em;
-  margin-top: -12px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 9px;
+  color: rgba(100,160,220,0.7);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Tagline */
+.bp-tagline {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(100,160,220,0.5);
+  letter-spacing: 1px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* SVG board diagram */
+.bp-diagram {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 24px;
 }
 
 /* Mode selector toggle on intro screen */
 #mode-selector {
   display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
   overflow: hidden;
-  margin-top: -8px;
+  width: 100%;
+  margin-bottom: 10px;
 }
 
 .mode-btn {
   flex: 1;
-  padding: 8px 20px;
+  padding: 10px 0;
   background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 0.9rem;
-  color: var(--muted);
+  font-family: 'Courier Prime', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(100,160,220,0.4);
   transition: background 0.15s, color 0.15s;
 }
+.mode-btn + .mode-btn { border-left: 1px solid rgba(100,160,220,0.3); }
 
 .mode-btn.active {
-  background: var(--accent);
-  color: white;
-  font-weight: 600;
+  background: rgba(100,160,220,0.2);
+  color: #5dade2;
 }
 
 #start-btn {
-  margin-top: 8px;
-  padding: 14px 40px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
+  width: 100%;
+  padding: 14px 0;
+  background: transparent;
+  color: #e8f4fd;
+  border: 1px solid rgba(100,160,220,0.5);
+  border-radius: 2px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 4px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  margin-bottom: 18px;
+  transition: background 0.15s, border-color 0.15s;
 }
-#start-btn:hover  { opacity: 0.85; }
-#start-btn:active { opacity: 0.7; }
+#start-btn:hover  { background: rgba(100,160,220,0.1); border-color: rgba(100,160,220,0.8); }
+#start-btn:active { background: rgba(100,160,220,0.2); }
 
 .intro-attribution {
-  margin-top: -8px;
-  font-size: 0.7rem;
-  color: #64748b;
+  font-family: 'Courier Prime', monospace;
+  font-size: 8px;
+  color: rgba(100,160,220,0.3);
+  letter-spacing: 1px;
   text-align: center;
+  line-height: 1.8;
 }
 .intro-attribution a {
-  color: #94a3b8;
+  color: rgba(100,160,220,0.4);
   text-decoration: underline;
 }
 
