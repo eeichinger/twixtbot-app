@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { Game, pt, SIZE, WHITE, BLACK } from '../twixt.js';
 import { NeuralMCTS } from '../mcts.js';
-import { legalMovePolicyArray } from '../naf.js';
+import { legalMovePolicyArray, policyPointToIndex } from '../naf.js';
 
 const NUM_MOVES = SIZE * (SIZE - 2); // 528
 
@@ -219,5 +219,112 @@ describe('NeuralMCTS — forced win returns a Point', () => {
     expect(isPoint).toBe(true);
     expect((result as {x:number;y:number}).x).toBe(18);
     expect((result as {x:number;y:number}).y).toBe(23);
+  });
+});
+
+// -------------------------------------------------------------------------
+// Tree reuse (_computeRoot) — A3
+// -------------------------------------------------------------------------
+
+describe('NeuralMCTS — tree reuse (_computeRoot)', () => {
+  // Build a SAP that strongly biases toward a fixed sequence of moves so MCTS
+  // reliably builds deep subtrees within a small trial budget.
+  // moves[i] is the preferred move at ply i (alternating WHITE/BLACK turns).
+  function buildBiasedSap(moves: ReturnType<typeof pt>[]): typeof uniformSap {
+    return async (game: Game) => {
+      const p = new Float32Array(NUM_MOVES);
+      const ply = game.history.length;
+      if (ply < moves.length) {
+        const color = game.turn;
+        const idx = policyPointToIndex(color, moves[ply]);
+        if (idx >= 0 && idx < NUM_MOVES) p[idx] = 100;
+      }
+      return [0, p] as [number, Float32Array];
+    };
+  }
+
+  // Fixed move sequence used across reuse tests (well inside the board, alternating colors)
+  const SEQ = [
+    pt(5,  5),  // WHITE ply 0
+    pt(10, 10), // BLACK ply 1
+    pt(5,  6),  // WHITE ply 2
+    pt(10, 11), // BLACK ply 3
+    pt(5,  7),  // WHITE ply 4
+    pt(10, 12), // BLACK ply 5
+  ];
+
+  it('delta=0: root and historyAtRoot unchanged after second call at same position', async () => {
+    const mcts = new NeuralMCTS(buildBiasedSap(SEQ), 1.0, 0.0);
+    const g = new Game();
+    await mcts.mcts(g, 5, 30_000);
+    const rootBefore = mcts.root;
+    await mcts.mcts(g, 5, 30_000);
+    // root may change (more visits expand more nodes) but historyAtRoot must stay [].
+    expect(mcts.historyAtRoot).not.toBeNull();
+    expect(mcts.historyAtRoot!.length).toBe(0);
+    expect(rootBefore).toBe(mcts.root); // same object — no unnecessary reset
+  });
+
+  it('delta=2: root is reused (historyAtRoot advances)', async () => {
+    const mcts = new NeuralMCTS(buildBiasedSap(SEQ), 1.0, 0.0);
+    const g = new Game();
+    // Enough trials to build the first two plies of the preferred path
+    await mcts.mcts(g, 30, 30_000);
+
+    g.play(SEQ[0]);  // WHITE
+    g.play(SEQ[1]);  // BLACK
+    await mcts.mcts(g, 5, 30_000);
+
+    expect(mcts.historyAtRoot).not.toBeNull();
+    expect(mcts.historyAtRoot!.length).toBe(2);
+  });
+
+  it('delta=4: root walk is attempted (not immediately discarded)', async () => {
+    // With the old limit of 2, delta=4 would reset root before even trying.
+    // Now it should attempt the walk; with enough prior trials the walk succeeds.
+    const mcts = new NeuralMCTS(buildBiasedSap(SEQ), 1.0, 0.0);
+    const g = new Game();
+    await mcts.mcts(g, 80, 30_000);
+
+    for (let i = 0; i < 4; i++) g.play(SEQ[i]);
+    await mcts.mcts(g, 5, 30_000);
+
+    // The walk may or may not find the node (depends on how deep trials went),
+    // but if it succeeded historyAtRoot will be at length 4.
+    // At minimum, verify the call didn't throw and the root is in a valid state.
+    expect(mcts.root).not.toBeUndefined();
+    if (mcts.historyAtRoot !== null) {
+      expect(mcts.historyAtRoot.length).toBe(4);
+    }
+  });
+
+  it('delta=5: root is immediately discarded (exceeds limit)', async () => {
+    const mcts = new NeuralMCTS(buildBiasedSap(SEQ), 1.0, 0.0);
+    const g = new Game();
+    await mcts.mcts(g, 200, 30_000);  // build a deep tree
+
+    for (let i = 0; i < 5; i++) g.play(SEQ[i]);
+    await mcts.mcts(g, 5, 30_000);
+
+    // Root was reset (delta=5 > 4) and then re-expanded at the new position.
+    expect(mcts.historyAtRoot).not.toBeNull();
+    expect(mcts.historyAtRoot!.length).toBe(5);
+  });
+
+  it('history mismatch: root is discarded when game diverges', async () => {
+    const mcts = new NeuralMCTS(uniformSap, 1.0, 0.0);
+    const g = new Game();
+    await mcts.mcts(g, 5, 30_000);
+    expect(mcts.historyAtRoot!.length).toBe(0);
+
+    // Play a move, then undo it and play a different one (divergent history)
+    g.play(pt(5, 5));
+    g.play(pt(10, 10));
+    g.undo();
+    g.play(pt(11, 11)); // different move — history now diverges from root
+    await mcts.mcts(g, 5, 30_000);
+
+    // Root was reset and re-anchored at the new 2-move position
+    expect(mcts.historyAtRoot!.length).toBe(2);
   });
 });

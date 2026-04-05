@@ -287,10 +287,10 @@ export class NeuralMCTS {
   private _computeRoot(game: Game): void {
     if (!this.root || !this.historyAtRoot) return;
 
-    const hist      = game.history;
-    const rootHist  = this.historyAtRoot;
+    const hist     = game.history;
+    const rootHist = this.historyAtRoot;
 
-    // Check that rootHist is a prefix of hist
+    // rootHist must be a prefix of hist
     if (hist.length < rootHist.length) { this.root = null; this.historyAtRoot = null; return; }
     for (let i = 0; i < rootHist.length; i++) {
       const a = rootHist[i], b = hist[i];
@@ -300,27 +300,25 @@ export class NeuralMCTS {
       }
     }
 
-    // Walk down the tree by the moves added since root
-    let node: EvalNode | null = this.root;
-    // Dummy game to track turn
-    const tmpGame = game.clone();
-    // We need to rewind tmpGame to rootHist length and re-play
-    // Easier: just reset root when histories diverge significantly.
-    // For simplicity, reset root if more than 2 moves ahead.
-    if (hist.length - rootHist.length > 2) {
-      this.root = null; this.historyAtRoot = null; return;
-    }
+    const delta = hist.length - rootHist.length;
+    if (delta === 0) return;  // already at root position
+    if (delta > 4)  { this.root = null; this.historyAtRoot = null; return; }
 
+    // Replay history up to rootHist to get the correct turn at that point,
+    // then walk the delta moves incrementally.  This is O(rootHist.length + delta)
+    // rather than the previous O(rootHist.length * delta) inner loop.
+    const g = new Game();
+    for (const m of rootHist) g.play(m);
+
+    let node: EvalNode | null = this.root;
     for (let i = rootHist.length; i < hist.length; i++) {
       const m = hist[i];
-      // Need the turn at move i — use a local game replay
-      const g = new Game();
-      for (let j = 0; j < i; j++) g.play(hist[j] as Point | 'swap');
-      const idx = m === 'swap' ? -1 : policyPointToIndex(g.turn, m as Point);
-      if (idx < 0 || !node || !node.subnodes[idx]) {
-        node = null; break;
-      }
-      node = node.subnodes[idx];
+      if (m === 'swap') { node = null; break; }  // swap has no policy index
+      const idx   = policyPointToIndex(g.turn, m as Point);
+      const child = node!.subnodes[idx];
+      if (!child) { node = null; break; }
+      g.play(m);
+      node = child;
     }
 
     if (node && node !== this.root) {
