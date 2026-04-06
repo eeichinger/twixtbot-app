@@ -21,7 +21,7 @@ import {
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-05-g';
+const APP_VERSION = '2026-04-05-h';
 
 // -------------------------------------------------------------------------
 // Constants

@@ -256,7 +256,7 @@ export class BoardUI {
     const { ctx, canvas, cellSize } = this;
     const fontSize = Math.max(Math.round(cellSize * 0.5), 7);
     ctx.font         = `${fontSize}px 'Courier Prime', monospace`;
-    ctx.fillStyle    = 'rgba(100,160,220,0.5)';
+    ctx.fillStyle    = 'rgba(255,255,255,0.7)';
     ctx.textBaseline = 'middle';
 
     const cols    = 'ABCDEFGHIJKLMNOPQRSTUVWX';
