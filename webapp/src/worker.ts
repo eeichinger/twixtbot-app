@@ -50,7 +50,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       mcts = new NeuralMCTS(
         (game) => player!.eval(game),
-        /* cpuct   */ 1.0,
+        /* cpuct   */ 0.5,
         /* addNoise */ 0.0,  // no exploration noise in single-player mode
       );
 
@@ -166,6 +166,6 @@ self.onmessage = async (e: MessageEvent) => {
   } else if (msg.type === 'abort') {
     // Reset tree to free memory; the in-flight async MCTS will finish its current
     // trial and then return (time limit check will stop the loop on next iteration).
-    if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 1.0, 0.0);
+    if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 0.5, 0.0);
   }
 };
