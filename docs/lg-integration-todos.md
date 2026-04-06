@@ -40,14 +40,10 @@ one by one using a real browser / curl against live LG URLs.
   If the span is further away or in a different column order, update the
   extraction window/regex.
 
-- [ ] **V4 — Remove dead `parseGameListTxt` function**
-  `parseGameListTxt` in `lg-api.ts` (lines ~156–175) is no longer called after
-  the two-attempt fallback was removed. Either:
-  (a) delete it entirely, or
-  (b) verify `player_game_list_txt.jsp` is accessible without login, confirm
-      the tab-separated column layout, and restore the txt path as the primary
-      fast path with HTML as fallback.
-  Decision needed before shipping.
+- [x] **V4 — Remove dead `parseGameListTxt` function** ✓ RESOLVED (April 2026)
+  `parseGameListTxt` was deleted entirely during the cleanup pass. The HTML
+  endpoint (`player_game_list.jsp`) is confirmed public and fully parsed by
+  `parseGameListHtml`. No txt fallback needed.
 
 - [ ] **V5 — Non-24 board size handling**
   All games visible in the Alan Hensel game list show "Size 24" — strong
