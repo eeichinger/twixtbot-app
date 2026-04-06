@@ -30,6 +30,13 @@ export class EvalNode {
   lm: Float32Array | null = null;
   /** Indices of legal moves (nonzero positions of lm). Set by expandLeaf. */
   lmNonzero: number[] | null = null;
+  /**
+   * Legal move indices sorted by prior P descending. Set by expandLeaf.
+   * Progressive widening uses a prefix of this array so the search
+   * focuses on high-prior moves first and expands to lower-prior moves
+   * only as visit counts grow.
+   */
+  lmByPrior: number[] | null = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +162,10 @@ export class NeuralMCTS {
       this._addDirichletNoise(leaf);
     }
 
+    // Sort legal moves by P descending for progressive widening.
+    // A stable copy avoids mutating lmNonzero (used by _updateProven).
+    leaf.lmByPrior = leaf.lmNonzero.slice().sort((a, b) => leaf.P[b] - leaf.P[a]);
+
     return leaf;
   }
 
@@ -212,17 +223,33 @@ export class NeuralMCTS {
   // UCB action selection
   // -------------------------------------------------------------------------
 
+  // Minimum number of candidates always considered regardless of visit count.
+  private static readonly PW_K_MIN = 12;
+  // Widening factor: K = max(K_MIN, ceil(PW_FACTOR * sqrt(totalN + 1))).
+  // At totalN=0 → K=12; totalN=100 → K=20; totalN=400 → K=40.
+  private static readonly PW_FACTOR = 2.0;
+
   private _selectAction(node: EvalNode, topNode: EvalNode, trialsLeft: number): number {
-    if (!node.lmNonzero || node.lmNonzero.length === 0) return -1;
+    if (!node.lmByPrior || node.lmByPrior.length === 0) return -1;
 
     const totalN = node.N.reduce((s, v) => s + v, 0);
     const sqrtN  = Math.sqrt(totalN + 1);
     const cpuct  = this.cpuct;
 
+    // Progressive widening: limit candidates to the top-K moves by prior so
+    // the fixed simulation budget is concentrated on plausible moves.  K grows
+    // with visit count so well-visited nodes explore more broadly over time.
+    const K = Math.min(
+      node.lmByPrior.length,
+      Math.max(NeuralMCTS.PW_K_MIN, Math.ceil(NeuralMCTS.PW_FACTOR * sqrtN)),
+    );
+    const candidates = node.lmByPrior;
+
     let best    = -Infinity;
     let bestIdx = -1;
 
-    for (const i of node.lmNonzero) {
+    for (let ci = 0; ci < K; ci++) {
+      const i = candidates[ci];
       if (node.subnodes[i]?.proven && node.subnodes[i]?.score === -1) {
         // Avoid proven losing moves
         continue;
@@ -233,8 +260,8 @@ export class NeuralMCTS {
       if (val > best) { best = val; bestIdx = i; }
     }
 
-    // Fallback: if all moves are proven losses, pick any legal one
-    if (bestIdx < 0) bestIdx = node.lmNonzero[0];
+    // Fallback: if all candidates are proven losses, pick the first legal move
+    if (bestIdx < 0) bestIdx = node.lmByPrior[0];
     return bestIdx;
   }
 
