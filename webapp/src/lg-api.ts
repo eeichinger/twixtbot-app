@@ -16,6 +16,12 @@
 import { parseTSGF, type ParsedGame } from './lg-sgf.js';
 
 // ---------------------------------------------------------------------------
+// Mock mode — set to false to enable real LG requests
+// ---------------------------------------------------------------------------
+
+const MOCK_MODE = true;
+
+// ---------------------------------------------------------------------------
 // CORS proxy — change this constant to switch proxy implementations
 // ---------------------------------------------------------------------------
 
@@ -47,6 +53,77 @@ export interface GameSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Mock data
+// ---------------------------------------------------------------------------
+
+const MOCK_PLAYERS: PlayerResult[] = [
+  { plid: '2674', name: 'Alan Hensel',  rating: '1. kyu'  },
+  { plid: '1890', name: 'Richard Malaschitz', rating: '2. dan' },
+  { plid: '3101', name: 'twixtbot',    rating: '3. kyu'  },
+  { plid: '4455', name: 'Peyrol',      rating: '5. kyu'  },
+  { plid: '5012', name: 'oakinger',    rating: '4. kyu'  },
+];
+
+const MOCK_GAMES_BY_PLID: Record<string, GameSummary[]> = {
+  '2674': [
+    { id: '2546140', blackPlayer: 'Alan Hensel', whitePlayer: 'twixtbot',   result: 'B+', boardSize: 24, moveCount: 31 },
+    { id: '2545876', blackPlayer: 'Richard Malaschitz', whitePlayer: 'Alan Hensel', result: 'W+', boardSize: 24, moveCount: 47 },
+    { id: '2501234', blackPlayer: 'Alan Hensel', whitePlayer: 'Peyrol',     result: 'B+', boardSize: 24, moveCount: 38 },
+    { id: '2498765', blackPlayer: 'oakinger',    whitePlayer: 'Alan Hensel', result: 'W+', boardSize: 24, moveCount: 52 },
+    { id: '2477000', blackPlayer: 'Alan Hensel', whitePlayer: 'Richard Malaschitz', result: 'B+', boardSize: 24, moveCount: 29 },
+  ],
+  '3101': [
+    { id: '2546140', blackPlayer: 'Alan Hensel', whitePlayer: 'twixtbot',   result: 'B+', boardSize: 24, moveCount: 31 },
+    { id: '2512000', blackPlayer: 'twixtbot',    whitePlayer: 'Peyrol',     result: 'W+', boardSize: 24, moveCount: 44 },
+  ],
+  '5012': [
+    { id: '2498765', blackPlayer: 'oakinger',    whitePlayer: 'Alan Hensel', result: 'B+', boardSize: 24, moveCount: 52 },
+    { id: '2531000', blackPlayer: 'Richard Malaschitz', whitePlayer: 'oakinger', result: 'W+', boardSize: 24, moveCount: 37 },
+  ],
+};
+
+// A realistic ~30-move TwixT PP game in LG SGF format.
+const MOCK_SGF_2546140 = `(;GM[21]FF[4]SZ[24]RU[PP]PB[Alan Hensel]PW[twixtbot]RE[B+]
+;B[hd];W[qd];B[swap];W[hd];B[me];W[lh];B[il];W[ji];B[kk]
+;W[ni];B[mg];W[oi];B[og];W[qg];B[pe];W[qj];B[nk];W[pk]
+;B[ml];W[pl];B[pm];W[ql];B[qm];W[rm];B[rn];W[sn];B[so]
+;W[ro];B[rp];W[tt])`;
+
+// Generic SGF for any game ID not explicitly mocked.
+function makeMockSgf(id: string, bp: string, wp: string, result: string): string {
+  return `(;GM[21]FF[4]SZ[24]RU[PP]PB[${bp}]PW[${wp}]RE[${result}]` +
+    `;B[hk];W[rk];B[swap];W[hk];B[md];W[lh];B[jl];W[ji];B[kk]` +
+    `;W[ni];B[mf];W[oh];B[og];W[qg];B[pe];W[qj];B[nk];W[pk]` +
+    `;B[ml];W[pl];B[tt])`;
+}
+
+async function mockSearchPlayers(name: string): Promise<PlayerResult[]> {
+  await delay(300);
+  const q = name.toLowerCase();
+  return MOCK_PLAYERS.filter(p => p.name.toLowerCase().includes(q));
+}
+
+async function mockFetchPlayerGamesByPlid(plid: string): Promise<GameSummary[]> {
+  await delay(400);
+  return MOCK_GAMES_BY_PLID[plid] ?? [];
+}
+
+async function mockFetchGame(id: string): Promise<ParsedGame> {
+  await delay(500);
+  if (id === '2546140') return parseTSGF(MOCK_SGF_2546140, id);
+  // Find game in any player list to get player names / result
+  for (const games of Object.values(MOCK_GAMES_BY_PLID)) {
+    const g = games.find(g => g.id === id);
+    if (g) return parseTSGF(makeMockSgf(id, g.blackPlayer, g.whitePlayer, g.result), id);
+  }
+  return parseTSGF(makeMockSgf(id, 'Player1', 'Player2', 'B+'), id);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
 // Step 1 — player name search
 // ---------------------------------------------------------------------------
 
@@ -62,6 +139,7 @@ export interface GameSummary {
  *   <td><span title="2235.3">1. kyu</span></td>
  */
 export async function searchPlayers(name: string): Promise<PlayerResult[]> {
+  if (MOCK_MODE) return mockSearchPlayers(name);
   const url = `${LG_BASE}/jsp/info/player_list.jsp?gtvar=twixt_DEFAULT&filter=${encodeURIComponent(name)}`;
   const res = await fetchProxied(url);
   const html = await res.text();
@@ -99,6 +177,7 @@ function parsePlayerListHtml(html: string): PlayerResult[] {
  * HTML URL: /jsp/info/player_game_list.jsp?gtid=twixt.PP&plid=PLID
  */
 export async function fetchPlayerGamesByPlid(plid: string): Promise<GameSummary[]> {
+  if (MOCK_MODE) return mockFetchPlayerGamesByPlid(plid);
   const url = `${LG_BASE}/jsp/info/player_game_list.jsp?gtid=twixt&plid=${encodeURIComponent(plid)}`;
   const res = await fetchProxied(url);
   const html = await res.text();
@@ -114,6 +193,7 @@ export async function fetchPlayerGamesByPlid(plid: string): Promise<GameSummary[
  * URL: /servlet/sgf/{id}/game{id}.tsgf
  */
 export async function fetchGame(id: string): Promise<ParsedGame> {
+  if (MOCK_MODE) return mockFetchGame(id);
   const url = `${LG_BASE}/servlet/sgf/${id}/game${id}.tsgf`;
   const res = await fetchProxied(url);
   const text = await res.text();
