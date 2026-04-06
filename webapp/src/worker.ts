@@ -99,6 +99,20 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }
 
+      // Immediate win detection: before spending any MCTS budget, scan all
+      // legal moves for a single-step win.  This is pure game-logic (no ONNX),
+      // so it's essentially free and guarantees we never miss a forced win.
+      for (const m of game.legalPlays()) {
+        game.play(m);
+        const won = game.justWon();
+        game.undo();
+        if (won) {
+          self.postMessage({ type: 'result', move: { x: m.x, y: m.y } });
+          isProcessing = false;
+          return;
+        }
+      }
+
       // Heartbeat: every 2s send a ping to main thread so it can confirm
       // the worker is still alive. Pings stop when MCTS finishes or is killed.
       let pingCount = 0;
