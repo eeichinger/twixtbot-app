@@ -622,14 +622,8 @@ let replayBoardUI: BoardUI | null = null;
 let replayParsedGame: ParsedGame | null = null;
 let replayMoveIndex = 0;
 
-/**
- * Tracks what the LG results panel is currently showing so the back button
- * inside the panel can navigate correctly:
- *   'empty'   — initial / cleared state
- *   'players' — player search results are displayed
- *   'games'   — a specific player's game list is displayed
- */
-let lgResultsMode: 'empty' | 'players' | 'games' = 'empty';
+/** Cached player search results for instant back-navigation without re-fetch. */
+let lastPlayerResults: PlayerResult[] = [];
 
 /** All screens that must be hidden when switching between them. */
 function hideAllScreens(): void {
@@ -655,81 +649,66 @@ function lgSetState(state: 'empty' | 'loading' | 'error' | 'results', errorMsg?:
   if (state === 'error' && errorMsg) $lgErrorMsg.textContent = errorMsg;
 }
 
+// ---- Shared card builder ------------------------------------------------
+
+function makeLgCard(line1: string, line2: string, onClick: () => void): HTMLDivElement {
+  const card = document.createElement('div');
+  card.className = 'lg-game-card';
+  const el1 = document.createElement('div');
+  el1.className = 'lg-card-players';
+  el1.textContent = line1;
+  const el2 = document.createElement('div');
+  el2.className = 'lg-card-meta';
+  el2.textContent = line2;
+  card.appendChild(el1);
+  card.appendChild(el2);
+  card.addEventListener('click', onClick);
+  return card;
+}
+
+function lgHandleError(diagKey: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  diagLog(`${diagKey}: ${msg}`);
+  lgSetState('error', `Error: ${msg}`);
+}
+
 // ---- Player result cards ------------------------------------------------
 
 function renderPlayerResults(players: PlayerResult[]): void {
   $lgResults.innerHTML = '';
-  lgResultsMode = 'players';
-
   if (players.length === 0) {
     lgSetState('error', 'No TwixT players found with that name.');
     return;
   }
   lgSetState('results');
   for (const p of players) {
-    const card = document.createElement('div');
-    card.className = 'lg-game-card';
-
-    const nameEl = document.createElement('div');
-    nameEl.className = 'lg-card-players';
-    nameEl.textContent = p.name;
-
-    const metaEl = document.createElement('div');
-    metaEl.className = 'lg-card-meta';
-    metaEl.textContent = p.rating ? `Rating: ${p.rating}  ·  id ${p.plid}` : `id ${p.plid}`;
-
-    card.appendChild(nameEl);
-    card.appendChild(metaEl);
-    card.addEventListener('click', () => openPlayerGames(p));
-    $lgResults.appendChild(card);
+    const meta = p.rating ? `Rating: ${p.rating}  ·  id ${p.plid}` : `id ${p.plid}`;
+    $lgResults.appendChild(makeLgCard(p.name, meta, () => openPlayerGames(p)));
   }
 }
 
 // ---- Game result cards --------------------------------------------------
 
-function renderGameResults(games: GameSummary[], backLabel?: string): void {
+function renderGameResults(games: GameSummary[]): void {
   $lgResults.innerHTML = '';
-  lgResultsMode = 'games';
-
   if (games.length === 0) {
     lgSetState('error', 'No finished TwixT PP games found for this player.');
     return;
   }
   lgSetState('results');
 
-  // "← back" link at the top of the list when drilling into a player's games
-  if (backLabel) {
-    const backEl = document.createElement('div');
-    backEl.className = 'lg-card-back';
-    backEl.textContent = `← ${backLabel}`;
-    backEl.addEventListener('click', () => {
-      // Re-run the last name search to restore the player list
-      performLgSearch();
-    });
-    $lgResults.appendChild(backEl);
-  }
+  // "← Players" back link restores cached player search results instantly
+  const backEl = document.createElement('div');
+  backEl.className = 'lg-card-back';
+  backEl.textContent = '← Players';
+  backEl.addEventListener('click', () => renderPlayerResults(lastPlayerResults));
+  $lgResults.appendChild(backEl);
 
   for (const g of games) {
-    const card = document.createElement('div');
-    card.className = 'lg-game-card';
-
-    const players = document.createElement('div');
-    players.className = 'lg-card-players';
-    if (g.opponent) {
-      players.textContent = `vs ${g.opponent}`;
-    } else {
-      players.textContent = `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
-    }
-
-    const meta = document.createElement('div');
-    meta.className = 'lg-card-meta';
+    const line1 = g.opponent ? `vs ${g.opponent}` : `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
     const movePart = g.moveCount > 0 ? `${g.moveCount} moves  ·  ` : '';
-    meta.textContent = `#${g.id}  ·  ${movePart}${formatResult(g.result)}`;
-
-    card.appendChild(players);
-    card.appendChild(meta);
-    card.addEventListener('click', () => openReplayById(g.id));
-    $lgResults.appendChild(card);
+    const line2 = `#${g.id}  ·  ${movePart}${formatResult(g.result)}`;
+    $lgResults.appendChild(makeLgCard(line1, line2, () => openReplayById(g.id)));
   }
 }
 
@@ -744,20 +723,17 @@ async function performLgSearch(): Promise<void> {
 
   try {
     if (/^\d+$/.test(query)) {
-      // Numeric → treat as game ID, go straight to replay
       diagLog(`lg-fetch-game id=${query}`);
       const parsed = await fetchGame(query);
       openReplayForParsedGame(parsed);
     } else {
-      // Text → player name search (step 1 of 2)
       diagLog(`lg-search-players name=${query}`);
       const players = await searchPlayers(query);
+      lastPlayerResults = players;
       renderPlayerResults(players);
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    diagLog(`lg-search-error: ${msg}`);
-    lgSetState('error', `Error: ${msg}`);
+    lgHandleError('lg-search-error', err);
   }
 }
 
@@ -767,11 +743,9 @@ async function openPlayerGames(player: PlayerResult): Promise<void> {
   try {
     diagLog(`lg-fetch-player-games plid=${player.plid}`);
     const games = await fetchPlayerGamesByPlid(player.plid);
-    renderGameResults(games, `Players`);
+    renderGameResults(games);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    diagLog(`lg-player-games-error: ${msg}`);
-    lgSetState('error', `Error: ${msg}`);
+    lgHandleError('lg-player-games-error', err);
   }
 }
 
@@ -782,9 +756,8 @@ async function openReplayById(id: string): Promise<void> {
     const parsed = await fetchGame(id);
     openReplayForParsedGame(parsed);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    diagLog(`lg-open-replay-error: ${msg}`);
-    lgSetState('error', `Error: ${msg}`);
+    lgHandleError('lg-open-replay-error', err);
+    // Restore the results panel so the user can try another game
     if ($lgResults.children.length > 0) lgSetState('results');
   }
 }

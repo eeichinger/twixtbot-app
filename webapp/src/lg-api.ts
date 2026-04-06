@@ -70,21 +70,24 @@ const MOCK_PLAYERS: PlayerResult[] = [
   { plid: '5012', name: 'oakinger',    rating: '4. kyu'  },
 ];
 
+// Mock game lists match the shape of real parseGameListHtml output:
+// blackPlayer/whitePlayer are '?' (not known from the listing page),
+// opponent holds the display name, result is player-perspective win/lost/draw.
 const MOCK_GAMES_BY_PLID: Record<string, GameSummary[]> = {
   '2674': [
-    { id: '2546140', blackPlayer: 'Alan Hensel', whitePlayer: 'twixtbot',   result: 'B+', boardSize: 24, moveCount: 31 },
-    { id: '2545876', blackPlayer: 'Richard Malaschitz', whitePlayer: 'Alan Hensel', result: 'W+', boardSize: 24, moveCount: 47 },
-    { id: '2501234', blackPlayer: 'Alan Hensel', whitePlayer: 'Peyrol',     result: 'B+', boardSize: 24, moveCount: 38 },
-    { id: '2498765', blackPlayer: 'oakinger',    whitePlayer: 'Alan Hensel', result: 'W+', boardSize: 24, moveCount: 52 },
-    { id: '2477000', blackPlayer: 'Alan Hensel', whitePlayer: 'Richard Malaschitz', result: 'B+', boardSize: 24, moveCount: 29 },
+    { id: '2546140', blackPlayer: '?', whitePlayer: '?', opponent: 'TwixtBot',          result: 'win',  boardSize: 24, moveCount: 31 },
+    { id: '2545876', blackPlayer: '?', whitePlayer: '?', opponent: 'Richard Malaschitz', result: 'lost', boardSize: 24, moveCount: 47 },
+    { id: '2501234', blackPlayer: '?', whitePlayer: '?', opponent: 'Peyrol',             result: 'win',  boardSize: 24, moveCount: 38 },
+    { id: '2498765', blackPlayer: '?', whitePlayer: '?', opponent: 'oakinger',           result: 'lost', boardSize: 24, moveCount: 52 },
+    { id: '2477000', blackPlayer: '?', whitePlayer: '?', opponent: 'Richard Malaschitz', result: 'win',  boardSize: 24, moveCount: 29 },
   ],
   '3101': [
-    { id: '2546140', blackPlayer: 'Alan Hensel', whitePlayer: 'twixtbot',   result: 'B+', boardSize: 24, moveCount: 31 },
-    { id: '2512000', blackPlayer: 'twixtbot',    whitePlayer: 'Peyrol',     result: 'W+', boardSize: 24, moveCount: 44 },
+    { id: '2546140', blackPlayer: '?', whitePlayer: '?', opponent: 'Alan Hensel', result: 'lost', boardSize: 24, moveCount: 31 },
+    { id: '2512000', blackPlayer: '?', whitePlayer: '?', opponent: 'Peyrol',      result: 'win',  boardSize: 24, moveCount: 44 },
   ],
   '5012': [
-    { id: '2498765', blackPlayer: 'oakinger',    whitePlayer: 'Alan Hensel', result: 'B+', boardSize: 24, moveCount: 52 },
-    { id: '2531000', blackPlayer: 'Richard Malaschitz', whitePlayer: 'oakinger', result: 'W+', boardSize: 24, moveCount: 37 },
+    { id: '2498765', blackPlayer: '?', whitePlayer: '?', opponent: 'Alan Hensel',        result: 'win',  boardSize: 24, moveCount: 52 },
+    { id: '2531000', blackPlayer: '?', whitePlayer: '?', opponent: 'Richard Malaschitz', result: 'lost', boardSize: 24, moveCount: 37 },
   ],
 };
 
@@ -96,7 +99,7 @@ const MOCK_SGF_2546140 = `(;GM[21]FF[4]SZ[24]RU[PP]PB[Alan Hensel]PW[twixtbot]RE
 ;W[ro];B[rp];W[tt])`;
 
 // Generic SGF for any game ID not explicitly mocked.
-function makeMockSgf(id: string, bp: string, wp: string, result: string): string {
+function makeMockSgf(bp: string, wp: string, result: string): string {
   return `(;GM[21]FF[4]SZ[24]RU[PP]PB[${bp}]PW[${wp}]RE[${result}]` +
     `;B[hk];W[rk];B[swap];W[hk];B[md];W[lh];B[jl];W[ji];B[kk]` +
     `;W[ni];B[mf];W[oh];B[og];W[qg];B[pe];W[qj];B[nk];W[pk]` +
@@ -120,9 +123,9 @@ async function mockFetchGame(id: string): Promise<ParsedGame> {
   // Find game in any player list to get player names / result
   for (const games of Object.values(MOCK_GAMES_BY_PLID)) {
     const g = games.find(g => g.id === id);
-    if (g) return parseTSGF(makeMockSgf(id, g.blackPlayer, g.whitePlayer, g.result), id);
+    if (g) return parseTSGF(makeMockSgf(g.blackPlayer, g.whitePlayer, g.result), id);
   }
-  return parseTSGF(makeMockSgf(id, 'Player1', 'Player2', 'B+'), id);
+  return parseTSGF(makeMockSgf('Player1', 'Player2', 'B+'), id);
 }
 
 function delay(ms: number): Promise<void> {
@@ -174,13 +177,8 @@ function parsePlayerListHtml(html: string): PlayerResult[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch TwixT PP games for a player identified by their numeric LG player ID.
- *
- * Tries the plain-text export endpoint first (fast, structured); falls back
- * to HTML parsing if it returns a non-text response.
- *
- * Text URL: /jsp/info/player_game_list_txt.jsp?gtid=twixt.PP&plid=PLID
- * HTML URL: /jsp/info/player_game_list.jsp?gtid=twixt.PP&plid=PLID
+ * Fetch TwixT games for a player identified by their numeric LG player ID.
+ * URL: /jsp/info/player_game_list.jsp?gtid=twixt&plid=PLID
  */
 export async function fetchPlayerGamesByPlid(plid: string): Promise<GameSummary[]> {
   if (MOCK_MODE) return mockFetchPlayerGamesByPlid(plid);
@@ -231,34 +229,6 @@ async function fetchProxied(url: string): Promise<Response> {
 // ---------------------------------------------------------------------------
 // Game list parsers
 // ---------------------------------------------------------------------------
-
-/**
- * Parse tab-separated player_game_list_txt.jsp response.
- *
- * Best-guess column layout (adjust if LG changes format):
- *   0: game ID   1: game type   2: black player   3: white player
- *   4: result ("B+", "W+", "0", "*"=ongoing)   5+: other
- */
-function parseGameListTxt(text: string): GameSummary[] {
-  const games: GameSummary[] = [];
-  for (const line of text.split('\n')) {
-    const cols = line.trim().split('\t');
-    if (cols.length < 5) continue;
-    const id = cols[0]?.trim();
-    if (!id || !/^\d+$/.test(id)) continue;
-    const result = cols[4]?.trim() ?? '?';
-    if (result === '*') continue;  // skip ongoing games
-    games.push({
-      id,
-      blackPlayer: cols[2]?.trim() || '?',
-      whitePlayer: cols[3]?.trim() || '?',
-      result,
-      boardSize: 24,
-      moveCount: 0,
-    });
-  }
-  return games;
-}
 
 /**
  * Parse the game-list HTML table from player_game_list.jsp.
