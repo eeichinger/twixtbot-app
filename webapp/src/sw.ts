@@ -25,10 +25,11 @@ self.addEventListener('install', (event) => {
   const urls: string[] = ((self as unknown as Record<string, unknown>).__WB_MANIFEST as Array<{ url: string }> ?? [])
     .map((e) => e.url);
 
-  // Do NOT call skipWaiting() here.  Skipping waiting fires controllerchange
-  // on all open clients; iOS Safari responds by reloading the page — which
-  // kills the AI computation mid-move.  The new SW will naturally activate
-  // on the user's next visit (once all tabs are closed).
+  // skipWaiting() lets the new SW take control immediately instead of waiting
+  // for all tabs to close.  The client (main.ts) listens for 'controllerchange'
+  // and only reloads the page when no game is in progress, so mid-move
+  // computation is never interrupted.
+  self.skipWaiting();
   event.waitUntil(
     caches.open(PRECACHE).then((cache) => cache.addAll(urls)),
   );
@@ -60,9 +61,13 @@ async function cacheFirst(request: Request, cacheName: string): Promise<Response
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return withCOI(cached);
-  const fresh = await fetch(request);
-  if (fresh.ok) cache.put(request, fresh.clone());
-  return withCOI(fresh);
+  try {
+    const fresh = await fetch(request);
+    if (fresh.ok) cache.put(request, fresh.clone());
+    return withCOI(fresh);
+  } catch {
+    return new Response('Resource not cached and network unavailable', { status: 503 });
+  }
 }
 
 // ── Fetch: single handler, always adds COI headers ───────────────────────────
@@ -88,6 +93,16 @@ async function handleFetch(request: Request): Promise<Response> {
   // 3. WASM binaries — large, stable, cache indefinitely
   if (/\.wasm(\?|$)/.test(url)) return cacheFirst(request, WASM_CACHE);
 
-  // 4. Anything else — network, but still add COI headers
-  return withCOI(await fetch(request));
+  // 4. Navigation requests (e.g. start_url variants) — fall back to cached index.html
+  if (request.mode === 'navigate') {
+    const indexFallback = await caches.match('/twixtbot-app/index.html');
+    if (indexFallback) return withCOI(indexFallback);
+  }
+
+  // 5. Anything else — network with COI headers; return offline error if network unavailable
+  try {
+    return withCOI(await fetch(request));
+  } catch {
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
 }

@@ -3,7 +3,10 @@
  * Loads the exported TwixNet ONNX model and provides async eval().
  */
 
-import * as ort from 'onnxruntime-web';
+// Import the WASM-only ORT bundle. This loads ort-wasm-simd-threaded.wasm
+// (12 MB) instead of the default ort-wasm-simd-threaded.jsep.wasm (24 MB),
+// halving the compiled WASM code memory footprint on iOS.
+import * as ort from 'onnxruntime-web/wasm';
 import type { Game } from './twixt.js';
 import { toInputArrays, threeToOne } from './naf.js';
 import { SIZE } from './twixt.js';
@@ -47,8 +50,11 @@ export class OnnxPlayer {
     console.log('[OnnxPlayer] executionProviders:', providers);
 
     this.session = await ort.InferenceSession.create(modelUrl, {
-      // ort tries backends in order: WebGPU (GPU-accelerated) → WASM (CPU fallback).
       executionProviders: providers,
+      // Disable ORT's memory arena allocator so the WASM heap doesn't
+      // pre-allocate and hold large slabs beyond the forward pass.
+      // This reduces peak memory on iOS, preventing deferred OS kills.
+      enableCpuMemArena: false,
     }).catch((e) => {
       throw new Error(`Failed to load ONNX model from ${modelUrl}: ${e}`);
     });

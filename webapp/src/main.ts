@@ -2,28 +2,32 @@
  * main.ts — App shell and game loop.
  *
  * Manages:
- *   - Worker lifecycle (init, move requests)
- *   - Game state (human is BLACK, AI is WHITE)
+ *   - Worker lifecycle (init, move requests) — PvC mode only
+ *   - Game state (human is BLACK, AI is WHITE in PvC; both human in PvP)
  *   - UI state (loading, thinking, game-over)
+ *   - Game mode selection (PvC vs PvP)
  */
 
 import { Game, pt, WHITE, BLACK } from './twixt.js';
 import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
+import {
+  loadGameMode, saveGameMode,
+  isHumanTurn, turnStatusText, resultMessage,
+  type GameMode,
+} from './game-mode.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-04-f';
+const APP_VERSION = '2026-04-05-h';
 
 // -------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------
 
 const MODEL_URL   = import.meta.env.BASE_URL + 'model.onnx';
-const HUMAN_COLOR = BLACK;
-const AI_COLOR    = WHITE;
 
 const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
 const THINK_TIME_KEY     = 'twixt-think-time-sec';
@@ -185,17 +189,18 @@ function stopHeartbeat(): void {
 // DOM references
 // -------------------------------------------------------------------------
 
-const $introScreen    = document.getElementById('intro-screen')!;
-const $loadingScreen  = document.getElementById('loading-screen')!;
-const $gameScreen     = document.getElementById('game-screen')!;
-const $statusText     = document.getElementById('status-text')!;
+const $introScreen     = document.getElementById('intro-screen')!;
+const $loadingScreen   = document.getElementById('loading-screen')!;
+const $gameScreen      = document.getElementById('game-screen')!;
+const $statusText      = document.getElementById('status-text')!;
 const $thinkingOverlay = document.getElementById('thinking-overlay')!;
-const $loadingMsg     = document.getElementById('loading-msg')!;
-const $undoBtn          = document.getElementById('undo-btn')!;
-const $swapBtn          = document.getElementById('swap-btn')!;
-const $newGameBtn       = document.getElementById('new-game-btn')!;
-const $thinkTimeSelect  = document.getElementById('think-time-select') as HTMLSelectElement;
-const boardCanvas     = document.getElementById('board-canvas') as HTMLCanvasElement;
+const $loadingMsg      = document.getElementById('loading-msg')!;
+const $hintBtn         = document.getElementById('hint-btn')!;
+const $swapBtn         = document.getElementById('swap-btn')!;
+const $undoBtn         = document.getElementById('undo-btn')!;
+const $newGameBtn      = document.getElementById('new-game-btn')!;
+const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
+const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
 
 // -------------------------------------------------------------------------
 // State
@@ -206,14 +211,34 @@ let board: BoardUI;
 let worker: Worker;
 /** True once the worker has sent 'ready'; false after terminate(). */
 let workerAlive = false;
+/** True while initWorker() has been called but 'ready' not yet received. */
+let workerLoading = false;
 /** Set when the user taps Start; gates whether onWorkerReady() begins the game. */
 let userClickedStart = false;
 let gameOver = false;
 let aiThinking = false;
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
+let gameMode: GameMode = loadGameMode();
 
 // -------------------------------------------------------------------------
-// Worker bridge
+// UI helpers
+// -------------------------------------------------------------------------
+
+/** Show/hide the think-time selector: always in PvC; in PvP only when the AI-move button is live. */
+function syncThinkTimeVisibility(): void {
+  const show = gameMode === 'pvc' ||
+    (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
+  $thinkTimeSelect.classList.toggle('hidden', !show);
+}
+
+/** Show the "AI move" button only when a human can meaningfully delegate their turn. */
+function syncHintButton(): void {
+  const show = !gameOver && !aiThinking && isHumanTurn(game.turn, gameMode);
+  $hintBtn.classList.toggle('hidden', !show);
+}
+
+// -------------------------------------------------------------------------
+// Worker bridge (PvC only)
 // -------------------------------------------------------------------------
 
 type MoveMsg = { x: number; y: number } | 'swap';
@@ -221,12 +246,14 @@ type MoveMsg = { x: number; y: number } | 'swap';
 function initWorker(onReady: () => void = onWorkerReady): void {
   diagLog('worker-init-start');
   workerAlive = false;
+  workerLoading = true;
   worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'ready') {
       workerAlive = true;
+      workerLoading = false;
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
@@ -235,14 +262,22 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'computing-done') {
-      // Worker's MCTS fully finished (may be AFTER result was already sent by hard deadline).
-      // Tells us the worker was still running computation during the human turn.
       diagLog(`worker-computing-done elapsed=${msg.elapsed}ms`);
     } else if (msg.type === 'error') {
       diagLog(`worker-error: ${msg.message}`);
       clearAiMoveTimer();
       console.error('[Worker]', msg.message);
-      $loadingMsg.textContent = `Error: ${msg.message}`;
+      if (!workerAlive) {
+        // Model failed to load (e.g. offline and not cached). Return to intro after a delay.
+        workerLoading = false;
+        const isOffline = !navigator.onLine;
+        $loadingMsg.textContent = isOffline
+          ? 'Offline — AI model not cached yet. Connect once to enable offline play.'
+          : `Failed to load AI: ${msg.message}`;
+        setTimeout(() => showIntro(), 3000);
+      } else {
+        $loadingMsg.textContent = `Error: ${msg.message}`;
+      }
     } else if (msg.type === 'ping') {
       diagLog(`worker-ping elapsed=${msg.elapsed}ms iters=${msg.iterations}`);
     }
@@ -252,6 +287,7 @@ function initWorker(onReady: () => void = onWorkerReady): void {
     diagLog(`worker-onerror: ${e.message}`);
     console.error('[Worker] crashed:', e.message);
     workerAlive = false;
+    workerLoading = false;
     if (aiThinking && !gameOver) onAiMoveTimeout();
   };
 
@@ -326,12 +362,13 @@ function onWorkerReady(): void {
 /** Show the Swap button only when the human can legally swap (move 2, human's turn). */
 function updateSwapBtn(): void {
   const canSwap = !gameOver && !aiThinking &&
-    game.turn === HUMAN_COLOR && game.history.length === 1;
+    isHumanTurn(game.turn, gameMode) && game.history.length === 1;
   $swapBtn.classList.toggle('hidden', !canSwap);
 }
 
 function onHumanMove(p: { x: number; y: number }): void {
-  if (gameOver || aiThinking || game.turn !== HUMAN_COLOR) return;
+  if (gameOver || aiThinking) return;
+  if (!isHumanTurn(game.turn, gameMode)) return;
   if (!game.legalPlays().contains(p)) return;
 
   diagLog(`human-move x=${p.x} y=${p.y}`);
@@ -341,19 +378,33 @@ function onHumanMove(p: { x: number; y: number }): void {
   board.setGame(game, false);
 
   if (game.justWon()) {
-    endGame('You win!');
+    // The player who just moved won: turn has already switched to the next player,
+    // so the winner is the opposite of game.turn.
+    const winner = game.turn === WHITE ? BLACK : WHITE;
+    endGame(resultMessage(winner, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
-    endGame('Draw');
+    endGame(resultMessage(null, gameMode));
     return;
   }
 
-  requestAiMove();
+  if (gameMode === 'pvp') {
+    // Other human player takes over.
+    board.setEnabled(true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
+    syncThinkTimeVisibility();
+    startHeartbeat();
+  } else {
+    syncHintButton();
+    syncThinkTimeVisibility();
+    requestAiMove();
+  }
 }
 
 function onHumanSwap(): void {
-  if (gameOver || aiThinking || game.turn !== HUMAN_COLOR || game.history.length !== 1) return;
+  if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode) || game.history.length !== 1) return;
 
   diagLog('human-swap');
   stopHeartbeat();
@@ -361,7 +412,17 @@ function onHumanSwap(): void {
   updateSwapBtn();
   board.setGame(game, false);
 
-  requestAiMove();
+  if (gameMode === 'pvp') {
+    board.setEnabled(true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
+    syncThinkTimeVisibility();
+    startHeartbeat();
+  } else {
+    syncHintButton();
+    syncThinkTimeVisibility();
+    requestAiMove();
+  }
 }
 
 function onAiMove(moveMsg: MoveMsg): void {
@@ -370,37 +431,78 @@ function onAiMove(moveMsg: MoveMsg): void {
   if (gameOver) return;
 
   const move: MoveRecord = moveMsg === 'swap' ? 'swap' : pt((moveMsg as {x:number;y:number}).x, (moveMsg as {x:number;y:number}).y);
+  // Remember who just moved before game.play() advances game.turn.
+  const movedColor = game.turn;
   game.play(move);
-  board.setGame(game, true);
 
   if (game.justWon()) {
-    endGame('AI wins');
+    board.setGame(game, false);
+    endGame(resultMessage(movedColor, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
-    endGame('Draw');
+    board.setGame(game, false);
+    endGame(resultMessage(null, gameMode));
     return;
   }
 
-  diagLog('human-turn-start');
-  $statusText.textContent = 'Your turn (Black)';
-  updateSwapBtn();
-  startHeartbeat();  // monitor JS suspension during human turn
+  if (isHumanTurn(game.turn, gameMode)) {
+    // Human's turn next — hand control back.
+    board.setGame(game, true);
+    diagLog('human-turn-start');
+    // Free WASM heap during human turn — iOS kills the page if ~300MB stays allocated.
+    // Worker will be restarted in requestAiMove() when the human makes their next move.
+    worker.terminate();
+    workerAlive = false;
+    diagLog('worker-terminated (freeing memory for human turn)');
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    updateSwapBtn();
+    syncHintButton();
+    syncThinkTimeVisibility();
+    startHeartbeat();  // monitor JS suspension during human turn
+  } else {
+    // AI's turn again (e.g. human used "AI move" and it's still AI's turn in PvC).
+    board.setGame(game, false);
+    requestAiMove();
+  }
+}
+
+function onHintClick(): void {
+  if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode)) return;
+  diagLog(`hint-requested turn=${game.turn}`);
+  requestAiMove();
 }
 
 function onUndoClick(): void {
   if (gameOver || aiThinking) return;
-  if (game.history.length >= 2) {
-    game.undo();
-    game.undo();
-    board.setGame(game, true);
-    $statusText.textContent = 'Your turn (Black)';
-    updateSwapBtn();
-  } else if (game.history.length === 1) {
-    game.undo();
-    board.setGame(game, true);
-    $statusText.textContent = 'Your turn (Black)';
-    updateSwapBtn();
+
+  if (gameMode === 'pvp') {
+    // PvP: undo exactly 1 move (the last player's move).
+    if (game.history.length >= 1) {
+      game.undo();
+      board.setGame(game, true);
+      $statusText.textContent = turnStatusText(game.turn, gameMode);
+      updateSwapBtn();
+      syncHintButton();
+      syncThinkTimeVisibility();
+    }
+  } else {
+    // PvC: undo the human move + the preceding AI move together, so it's
+    // always the human's turn after undo.
+    if (game.history.length >= 2) {
+      game.undo();
+      game.undo();
+      board.setGame(game, true);
+      $statusText.textContent = turnStatusText(BLACK, gameMode);
+      updateSwapBtn();
+    } else if (game.history.length === 1) {
+      game.undo();
+      board.setGame(game, true);
+      $statusText.textContent = turnStatusText(BLACK, gameMode);
+      updateSwapBtn();
+    }
+    syncHintButton();
+    syncThinkTimeVisibility();
   }
 }
 
@@ -417,19 +519,15 @@ function showIntro(result?: string): void {
   gameOver = true;
   userClickedStart = false;
   setThinking(false);
-  const subtitleEl = document.getElementById('intro-subtitle');
-  if (subtitleEl) subtitleEl.textContent = result ?? 'vs AI';
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement | null;
   if (startBtn) startBtn.textContent = result ? 'Play Again' : 'Start Game';
   $gameScreen.classList.add('hidden');
   $loadingScreen.classList.add('hidden');
   $introScreen.classList.remove('hidden');
-  // Re-arm worker silently for the next game if not already alive
-  if (!workerAlive) initWorker();
 }
 
 function startNewGame(): void {
-  diagLog('new-game-start');
+  diagLog(`new-game-start mode=${gameMode}`);
   stopHeartbeat();
   clearAiMoveTimer();
   // Only terminate if AI was mid-move; otherwise reuse the loaded worker.
@@ -443,13 +541,43 @@ function startNewGame(): void {
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
+  $undoBtn.classList.remove('hidden');
   board.setGame(game, false);
-  requestAiMove();
+  syncThinkTimeVisibility();
+
+  syncHintButton();
+  syncThinkTimeVisibility();
+  if (gameMode === 'pvc') {
+    requestAiMove();
+  } else {
+    // PvP: WHITE (first mover) takes the first turn.
+    board.setEnabled(true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    syncHintButton();
+    syncThinkTimeVisibility();
+    startHeartbeat();
+  }
 }
 
 function endGame(msg: string): void {
   diagLog(`game-over: ${msg}`);
-  showIntro(msg);
+  gameOver = true;
+  userClickedStart = false;
+  stopHeartbeat();
+  clearAiMoveTimer();
+  if (aiThinking) {
+    try { worker.terminate(); } catch { /* ignore */ }
+    workerAlive = false;
+    aiThinking = false;
+    diagLog('worker-terminated (game over)');
+  }
+  setThinking(false);
+  $statusText.textContent = msg;
+  board.setEnabled(false);
+  $hintBtn.classList.add('hidden');
+  $swapBtn.classList.add('hidden');
+  $undoBtn.classList.add('hidden');
+  $thinkTimeSelect.classList.add('hidden');
 }
 
 function setThinking(thinking: boolean): void {
@@ -457,9 +585,12 @@ function setThinking(thinking: boolean): void {
     $statusText.textContent = 'AI is thinking…';
     $thinkingOverlay.classList.remove('hidden');
     board.setEnabled(false);
+    $hintBtn.classList.add('hidden');
+    $thinkTimeSelect.classList.remove('hidden'); // keep visible so user can adjust mid-think
   } else {
     $thinkingOverlay.classList.add('hidden');
     if (!gameOver) board.setEnabled(true);
+    // syncHintButton() / syncThinkTimeVisibility() called by whoever transitions out of thinking.
   }
 }
 
@@ -497,10 +628,13 @@ function init(): void {
     diagLog(`unhandled-rejection: ${e.reason}`);
   });
 
-  // SW controller changes — rules out SW as reload cause
+  // SW controller changes: new SW has activated (skipWaiting fired).
+  // Reload to pick up the new assets — but only when no game is in progress
+  // (userClickedStart is true only while a game is active).
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       diagLog('sw-controllerchange');
+      if (!userClickedStart) window.location.reload();
     });
   }
 
@@ -518,24 +652,60 @@ function init(): void {
     localStorage.setItem(THINK_TIME_KEY, $thinkTimeSelect.value);
   });
 
+  $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
 
-  // Start button: hide intro, begin game (or show loading if model not ready yet).
+  // Mode selector buttons on intro screen
+  document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      gameMode = btn.dataset.mode as GameMode;
+      saveGameMode(gameMode);
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      syncThinkTimeVisibility();
+      // Pre-load AI model when user switches to PvC (if not already loading/loaded).
+      if (gameMode === 'pvc' && !workerAlive) initWorker();
+    });
+  });
+
+  // Restore persisted mode selection visually
+  document.querySelector<HTMLButtonElement>(`.mode-btn[data-mode="${gameMode}"]`)
+    ?.classList.add('active');
+
+  // Start button: hide intro, begin game.
   document.getElementById('start-btn')?.addEventListener('click', () => {
     userClickedStart = true;
     $introScreen.classList.add('hidden');
+
+    if (gameMode === 'pvp') {
+      // PvP: no worker needed — go directly to game screen.
+      $gameScreen.classList.remove('hidden');
+      startNewGame();
+      return;
+    }
+
+    // PvC: worker must be ready (or loading).
     if (workerAlive) {
       $gameScreen.classList.remove('hidden');
       startNewGame();
     } else {
-      // Model still loading in background — show loading screen until onWorkerReady fires.
+      // Show loading screen; start loading the worker if it isn't already.
       $loadingScreen.classList.remove('hidden');
+      if (!workerLoading) initWorker();
     }
   });
 
-  initWorker();  // begin loading model silently while intro screen is shown (userClickedStart=false)
+  diagLog(`game-mode=${gameMode}`);
+  if (gameMode === 'pvc') {
+    // Pre-load AI model in PvC mode while intro screen is shown.
+    initWorker();
+  } else {
+    // In PvP mode the worker isn't started, but we still warm the SW model cache
+    // in the background so it's available if the user switches to PvC while offline.
+    fetch(MODEL_URL).catch(() => {});
+  }
 }
 
 init();
