@@ -69,6 +69,7 @@
         <button class="mode-btn"        data-mode="pvp">vs Player</button>
       </div>
       <button id="start-btn">Start Game</button>
+      <button id="lg-explore-btn">Browse Little Golem</button>
       <p class="intro-attribution">Based on <a href="https://github.com/BonyJordan/twixtbot" target="_blank" rel="noopener">twixtbot</a> by Jordan Lampe &mdash;<br>MIT License</p>
       <span id="intro-version" title="Tap 3× for diagnostics" style="position:absolute;bottom:12px;right:12px;font-size:0.7rem;color:rgba(100,160,220,0.4);cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
     </div>
@@ -105,6 +106,48 @@
         <div class="thinking-spinner"></div>
         <div>AI is thinking…</div>
       </div>
+    </div>
+
+    <!-- LG Explore screen -->
+    <div id="lg-screen" class="hidden">
+      <header id="lg-header">
+        <button id="lg-back-btn" title="Back to intro">&#8592;</button>
+        <span id="lg-title">Little Golem</span>
+      </header>
+      <div id="lg-body">
+        <div id="lg-search-row">
+          <input id="lg-search-input" type="text" placeholder="Player name or Game ID"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
+          <button id="lg-search-btn">Search</button>
+        </div>
+        <div id="lg-status">
+          <div id="lg-empty-msg">Enter a player name or game&nbsp;ID</div>
+          <div id="lg-loading-msg" class="hidden">
+            <div class="loading-spinner" style="width:24px;height:24px;border-width:2px"></div>
+            <span>Loading&hellip;</span>
+          </div>
+          <div id="lg-error-msg" class="hidden"></div>
+        </div>
+        <div id="lg-results"></div>
+      </div>
+    </div>
+
+    <!-- Replay viewer screen -->
+    <div id="replay-screen" class="hidden">
+      <header id="replay-header">
+        <button id="replay-back-btn" title="Back to search">&#8592;</button>
+        <span id="replay-title">Replay</span>
+      </header>
+      <main id="replay-board-container">
+        <canvas id="replay-canvas"></canvas>
+      </main>
+      <footer id="replay-controls">
+        <button id="replay-first-btn" title="First move">&#124;&#9664;</button>
+        <button id="replay-prev-btn"  title="Previous move">&#9664;</button>
+        <span   id="replay-counter">Move 0 / 0</span>
+        <button id="replay-next-btn"  title="Next move">&#9654;</button>
+        <button id="replay-last-btn"  title="Last move">&#9654;&#124;</button>
+      </footer>
     </div>
 
     <!-- Diagnostic log overlay — lives outside game-screen so it's reachable from any screen -->

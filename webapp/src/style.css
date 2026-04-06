@@ -372,3 +372,293 @@ html, body {
 }
 #gameover-new-btn:hover  { background: rgba(100,160,220,0.1); }
 #gameover-new-btn:active { background: rgba(100,160,220,0.2); }
+
+/* -------------------------------------------------------------------------
+   Browse Little Golem button (intro screen, secondary action)
+   ------------------------------------------------------------------------- */
+#lg-explore-btn {
+  width: 100%;
+  padding: 9px 0;
+  background: transparent;
+  color: rgba(100,160,220,0.55);
+  border: 1px solid rgba(100,160,220,0.2);
+  border-radius: 2px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#lg-explore-btn:hover  { background: rgba(100,160,220,0.07); color: #5dade2; border-color: rgba(100,160,220,0.4); }
+#lg-explore-btn:active { background: rgba(100,160,220,0.15); }
+.phone-screen #lg-explore-btn { font-size: 13px; letter-spacing: 1.5px; }
+
+/* -------------------------------------------------------------------------
+   LG Explore screen
+   ------------------------------------------------------------------------- */
+#lg-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1b2f4e;
+  background-image:
+    linear-gradient(rgba(100,160,220,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,160,220,0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+#lg-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  height: var(--header-h);
+  background: #0f1929;
+  border-bottom: 1px solid rgba(100,160,220,0.2);
+  flex-shrink: 0;
+}
+
+#lg-header button {
+  padding: 6px 12px;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#lg-header button:hover  { background: rgba(100,160,220,0.1); }
+#lg-header button:active { background: rgba(100,160,220,0.2); }
+
+#lg-title {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #e8f4fd;
+  flex: 1;
+}
+
+#lg-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  overflow-y: auto;
+  /* allow scrolling on touch inside this panel */
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#lg-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+#lg-search-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: rgba(100,160,220,0.08);
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#lg-search-input::placeholder { color: rgba(100,160,220,0.35); }
+#lg-search-input:focus { border-color: rgba(100,160,220,0.7); }
+
+#lg-search-btn {
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid rgba(100,160,220,0.4);
+  border-radius: 2px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#lg-search-btn:hover  { background: rgba(100,160,220,0.1); }
+#lg-search-btn:active { background: rgba(100,160,220,0.2); }
+
+#lg-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#lg-empty-msg {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.4);
+  text-align: center;
+  padding: 24px 0;
+}
+
+#lg-loading-msg {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.6);
+}
+
+#lg-error-msg {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: #e07070;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* Game result cards */
+.lg-game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: rgba(100,160,220,0.06);
+  border: 1px solid rgba(100,160,220,0.18);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  margin-bottom: 6px;
+}
+.lg-game-card:hover  { background: rgba(100,160,220,0.12); border-color: rgba(100,160,220,0.35); }
+.lg-game-card:active { background: rgba(100,160,220,0.2); }
+
+.lg-card-players {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e8f4fd;
+}
+
+.lg-card-meta {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.55);
+}
+
+/* -------------------------------------------------------------------------
+   Replay viewer screen
+   ------------------------------------------------------------------------- */
+#replay-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1b2f4e;
+  background-image:
+    linear-gradient(rgba(100,160,220,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,160,220,0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+#replay-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  height: var(--header-h);
+  background: #0f1929;
+  border-bottom: 1px solid rgba(100,160,220,0.2);
+  flex-shrink: 0;
+}
+
+#replay-header button {
+  padding: 6px 12px;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#replay-header button:hover  { background: rgba(100,160,220,0.1); }
+#replay-header button:active { background: rgba(100,160,220,0.2); }
+
+#replay-title {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #e8f4fd;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#replay-board-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+#replay-canvas {
+  display: block;
+  /* no touch-action:none here; replay board is read-only (no drag) */
+}
+
+#replay-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #0f1929;
+  border-top: 1px solid rgba(100,160,220,0.2);
+  flex-shrink: 0;
+}
+
+#replay-controls button {
+  padding: 8px 14px;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#replay-controls button:hover  { background: rgba(100,160,220,0.1); }
+#replay-controls button:active { background: rgba(100,160,220,0.2); }
+#replay-controls button:disabled { opacity: 0.3; cursor: default; }
+#replay-controls button:disabled:hover { background: transparent; }
+
+#replay-counter {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.7);
+  min-width: 90px;
+  text-align: center;
+}

@@ -16,6 +16,8 @@ import {
   isHumanTurn, turnStatusText, resultMessage,
   type GameMode,
 } from './game-mode.js';
+import { fetchGame, fetchPlayerGames, type GameSummary } from './lg-api.js';
+import { formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
@@ -201,6 +203,25 @@ const $undoBtn         = document.getElementById('undo-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
+
+// LG Explore screen
+const $lgScreen        = document.getElementById('lg-screen')!;
+const $lgSearchInput   = document.getElementById('lg-search-input') as HTMLInputElement;
+const $lgSearchBtn     = document.getElementById('lg-search-btn')!;
+const $lgEmptyMsg      = document.getElementById('lg-empty-msg')!;
+const $lgLoadingMsg    = document.getElementById('lg-loading-msg')!;
+const $lgErrorMsg      = document.getElementById('lg-error-msg')!;
+const $lgResults       = document.getElementById('lg-results')!;
+
+// Replay viewer screen
+const $replayScreen    = document.getElementById('replay-screen')!;
+const $replayTitle     = document.getElementById('replay-title')!;
+const $replayCounter   = document.getElementById('replay-counter')!;
+const $replayFirstBtn  = document.getElementById('replay-first-btn') as HTMLButtonElement;
+const $replayPrevBtn   = document.getElementById('replay-prev-btn')  as HTMLButtonElement;
+const $replayNextBtn   = document.getElementById('replay-next-btn')  as HTMLButtonElement;
+const $replayLastBtn   = document.getElementById('replay-last-btn')  as HTMLButtonElement;
+const replayCanvas     = document.getElementById('replay-canvas') as HTMLCanvasElement;
 
 // -------------------------------------------------------------------------
 // State
@@ -521,8 +542,7 @@ function showIntro(result?: string): void {
   setThinking(false);
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement | null;
   if (startBtn) startBtn.textContent = result ? 'Play Again' : 'Start Game';
-  $gameScreen.classList.add('hidden');
-  $loadingScreen.classList.add('hidden');
+  hideAllScreens();
   $introScreen.classList.remove('hidden');
 }
 
@@ -595,6 +615,143 @@ function setThinking(thinking: boolean): void {
 }
 
 // -------------------------------------------------------------------------
+// Little Golem — Explore & Replay
+// -------------------------------------------------------------------------
+
+let replayBoardUI: BoardUI | null = null;
+let replayParsedGame: ParsedGame | null = null;
+let replayMoveIndex = 0;
+
+/** All screens that must be hidden when switching between them. */
+function hideAllScreens(): void {
+  $introScreen.classList.add('hidden');
+  $loadingScreen.classList.add('hidden');
+  $gameScreen.classList.add('hidden');
+  $lgScreen.classList.add('hidden');
+  $replayScreen.classList.add('hidden');
+}
+
+function showLgScreen(): void {
+  diagLog('lg-screen-open');
+  hideAllScreens();
+  $lgScreen.classList.remove('hidden');
+}
+
+/** Set the LG explore UI into one of four states. */
+function lgSetState(state: 'empty' | 'loading' | 'error' | 'results', errorMsg?: string): void {
+  $lgEmptyMsg.classList.toggle('hidden',   state !== 'empty');
+  $lgLoadingMsg.classList.toggle('hidden', state !== 'loading');
+  $lgErrorMsg.classList.toggle('hidden',   state !== 'error');
+  $lgResults.classList.toggle('hidden',    state !== 'results');
+  if (state === 'error' && errorMsg) $lgErrorMsg.textContent = errorMsg;
+}
+
+function renderLgResults(games: GameSummary[]): void {
+  $lgResults.innerHTML = '';
+  if (games.length === 0) {
+    lgSetState('error', 'No finished TwixT games found for this player.');
+    return;
+  }
+  lgSetState('results');
+  for (const g of games) {
+    const card = document.createElement('div');
+    card.className = 'lg-game-card';
+
+    const players = document.createElement('div');
+    players.className = 'lg-card-players';
+    players.textContent = `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
+
+    const meta = document.createElement('div');
+    meta.className = 'lg-card-meta';
+    meta.textContent = `#${g.id}  ·  ${formatResult(g.result)}`;
+
+    card.appendChild(players);
+    card.appendChild(meta);
+    card.addEventListener('click', () => openReplayById(g.id));
+    $lgResults.appendChild(card);
+  }
+}
+
+async function performLgSearch(): Promise<void> {
+  const query = $lgSearchInput.value.trim();
+  if (!query) return;
+
+  lgSetState('loading');
+  $lgResults.innerHTML = '';
+
+  try {
+    if (/^\d+$/.test(query)) {
+      // Looks like a game ID — fetch that game directly
+      diagLog(`lg-fetch-game id=${query}`);
+      const parsed = await fetchGame(query);
+      openReplayForParsedGame(parsed);
+    } else {
+      // Treat as player name
+      diagLog(`lg-fetch-player name=${query}`);
+      const games = await fetchPlayerGames(query);
+      renderLgResults(games);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    diagLog(`lg-search-error: ${msg}`);
+    lgSetState('error', `Error: ${msg}`);
+  }
+}
+
+async function openReplayById(id: string): Promise<void> {
+  lgSetState('loading');
+  try {
+    diagLog(`lg-fetch-game id=${id}`);
+    const parsed = await fetchGame(id);
+    openReplayForParsedGame(parsed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    diagLog(`lg-open-replay-error: ${msg}`);
+    lgSetState('error', `Error: ${msg}`);
+    // Re-show results if there were any
+    if ($lgResults.children.length > 0) lgSetState('results');
+  }
+}
+
+function openReplayForParsedGame(parsed: ParsedGame): void {
+  replayParsedGame = parsed;
+  replayMoveIndex = parsed.moves.length; // start at final position
+
+  // Lazy-init the replay BoardUI
+  if (!replayBoardUI) {
+    replayBoardUI = new BoardUI(replayCanvas, { onMove: () => {} });
+  }
+
+  const title = `${parsed.blackPlayer} vs ${parsed.whitePlayer}  #${parsed.id}`;
+  $replayTitle.textContent = title;
+  diagLog(`lg-replay-open id=${parsed.id} moves=${parsed.moves.length}`);
+
+  hideAllScreens();
+  $replayScreen.classList.remove('hidden');
+
+  replayShowAtIndex(replayMoveIndex);
+}
+
+function replayShowAtIndex(index: number): void {
+  if (!replayParsedGame || !replayBoardUI) return;
+  const total = replayParsedGame.moves.length;
+  replayMoveIndex = Math.max(0, Math.min(index, total));
+
+  // Replay moves onto a fresh game
+  const g = new Game();
+  for (let i = 0; i < replayMoveIndex; i++) {
+    g.play(replayParsedGame.moves[i]);
+  }
+  replayBoardUI.setGame(g, false); // read-only
+
+  $replayCounter.textContent = `Move ${replayMoveIndex} / ${total}`;
+  $replayFirstBtn.disabled = replayMoveIndex === 0;
+  $replayPrevBtn.disabled  = replayMoveIndex === 0;
+  $replayNextBtn.disabled  = replayMoveIndex === total;
+  $replayLastBtn.disabled  = replayMoveIndex === total;
+}
+
+// -------------------------------------------------------------------------
 // Bootstrap
 // -------------------------------------------------------------------------
 
@@ -656,6 +813,37 @@ function init(): void {
   $undoBtn.addEventListener('click',    onUndoClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
+
+  // LG Explore button on intro screen
+  document.getElementById('lg-explore-btn')?.addEventListener('click', () => {
+    showLgScreen();
+    lgSetState('empty');
+    $lgResults.innerHTML = '';
+    $lgSearchInput.value = '';
+  });
+
+  // LG screen — back, search
+  document.getElementById('lg-back-btn')?.addEventListener('click', () => showIntro());
+  $lgSearchBtn.addEventListener('click', () => performLgSearch());
+  $lgSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') performLgSearch();
+  });
+
+  // Replay screen — back and step controls
+  document.getElementById('replay-back-btn')?.addEventListener('click', () => showLgScreen());
+  $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
+  $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));
+  $replayNextBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex + 1));
+  $replayLastBtn.addEventListener('click',  () => replayShowAtIndex(replayParsedGame?.moves.length ?? 0));
+
+  // Keyboard navigation in replay (arrow keys)
+  document.addEventListener('keydown', (e) => {
+    if ($replayScreen.classList.contains('hidden')) return;
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   replayShowAtIndex(replayMoveIndex - 1);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  replayShowAtIndex(replayMoveIndex + 1);
+    if (e.key === 'Home') replayShowAtIndex(0);
+    if (e.key === 'End')  replayShowAtIndex(replayParsedGame?.moves.length ?? 0);
+  });
 
   // Mode selector buttons on intro screen
   document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach(btn => {
