@@ -87,6 +87,29 @@ self.onmessage = async (e: MessageEvent) => {
       const game = replayHistory(history);
       const turn = game.turn;
 
+      // Opening book: WHITE's first move.  MCTS burns 5-10 s on move 1 with
+      // the highest branching factor and the least tactical content.  Instead,
+      // pick randomly from positions that have swap scores in [0.54, 0.58] —
+      // strong enough that BLACK will often swap them, but not so extreme that
+      // they're trivially decided.  Each folded position and all 4 board mirrors
+      // are included so the opening varies across games.
+      //
+      // Swap scores (BETAS model, folded coords xres=x-6, yres=y-5.5):
+      //   (7,8)↔(7,15)↔(16,8)↔(16,15)  ≈ 0.550
+      //   (8,9)↔(8,14)↔(15,9)↔(15,14)  ≈ 0.574
+      //   (9,8)↔(9,15)↔(14,8)↔(14,15)  ≈ 0.548
+      const OPENING_BOOK = [
+        {x:7,y:8},  {x:7,y:15},  {x:16,y:8},  {x:16,y:15},
+        {x:8,y:9},  {x:8,y:14},  {x:15,y:9},  {x:15,y:14},
+        {x:9,y:8},  {x:9,y:15},  {x:14,y:8},  {x:14,y:15},
+      ];
+      if (game.history.length === 0) {
+        const pick = OPENING_BOOK[Math.floor(Math.random() * OPENING_BOOK.length)];
+        self.postMessage({ type: 'result', move: pick });
+        isProcessing = false;
+        return;
+      }
+
       // Swap rule: when the AI is playing as BLACK at move 2, use the fitted
       // swap model to decide whether to take WHITE's first peg.  MCTS cannot
       // reason about this because 'swap' is not in the 528-action policy array.
