@@ -7,14 +7,16 @@ one by one using a real browser / curl against live LG URLs.
 
 ## Open items
 
-- [ ] **V1 — corsproxy.io works against LG**
-  Manually fetch an LG URL through corsproxy.io in a browser or with curl:
-  ```
-  curl "https://corsproxy.io/?url=https%3A%2F%2Fwww.littlegolem.net%2Fservlet%2Fsgf%2F2546140%2Fgame2546140.tsgf"
-  ```
-  Verify: response body is the raw `.tsgf` text (not JSON-wrapped, not a login
-  page). Check response status is 200. Check no extraneous headers or body
-  wrapper are injected.
+- [ ] **V1 — Cloudflare Worker proxy works against LG** *(replaces corsproxy.io)*
+  corsproxy.io blocks the required content-type without a paid subscription.
+  A Cloudflare Worker is the replacement. See `docs/cloudflare-proxy-setup.md`
+  for the full step-by-step setup and verification guide.
+  Verify:
+  - Worker deployed and accessible at `https://<worker>.workers.dev`
+  - SGF fetch returns raw `.tsgf` text (not JSON-wrapped)
+  - Player list and game list HTML fetches return raw HTML
+  - `PROXY_PREFIX` in `lg-api.ts` updated to point to the Worker URL
+  - MOCK_MODE flipped to `false` and app tested end-to-end
 
 - [x] **V2 — `player_game_list.jsp` HTML structure** ✓ RESOLVED (April 2026)
   Verified from live HTML for plid=2674 (Alan Hensel). The page is a static
@@ -53,11 +55,10 @@ one by one using a real browser / curl against live LG URLs.
   If other sizes exist: `replayShowAtIndex` in `main.ts` creates `new Game()`
   which hard-codes 24×24 — fix it to use `parsedGame.boardSize`.
 
-- [ ] **V6 — corsproxy.io response encoding for SGF**
-  Confirm the SGF response from corsproxy.io is plain UTF-8 text (not
+- [ ] **V6 — Proxy response encoding for SGF** *(depends on V1)*
+  Confirm the SGF response from the Cloudflare Worker is plain UTF-8 text (not
   base64-encoded or JSON-wrapped). The current code calls `res.text()` directly.
-  If the proxy wraps the body (e.g. `{ "contents": "..." }`), the `parseTSGF`
-  call will fail silently (no `GM[21]` found). Check with the curl test above.
+  Covered by the V1 end-to-end test if the replay screen shows moves correctly.
 
 ---
 
@@ -71,3 +72,4 @@ one by one using a real browser / curl against live LG URLs.
       `twixt.PP`) from user-pasted `player.jsp` HTML showing the nav link
 - [x] `player_game_list_txt.jsp` is not the right endpoint — removed from code
 - [x] LG has no CORS headers — confirmed; all direct requests blocked
+- [x] corsproxy.io — PARKED: blocks required content-type without paid plan
