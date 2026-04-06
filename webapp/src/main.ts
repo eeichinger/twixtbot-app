@@ -16,7 +16,7 @@ import {
   isHumanTurn, turnStatusText, resultMessage,
   type GameMode,
 } from './game-mode.js';
-import { fetchGame, fetchPlayerGames, type GameSummary } from './lg-api.js';
+import { fetchGame, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
 import { formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
@@ -622,6 +622,15 @@ let replayBoardUI: BoardUI | null = null;
 let replayParsedGame: ParsedGame | null = null;
 let replayMoveIndex = 0;
 
+/**
+ * Tracks what the LG results panel is currently showing so the back button
+ * inside the panel can navigate correctly:
+ *   'empty'   — initial / cleared state
+ *   'players' — player search results are displayed
+ *   'games'   — a specific player's game list is displayed
+ */
+let lgResultsMode: 'empty' | 'players' | 'games' = 'empty';
+
 /** All screens that must be hidden when switching between them. */
 function hideAllScreens(): void {
   $introScreen.classList.add('hidden');
@@ -637,7 +646,7 @@ function showLgScreen(): void {
   $lgScreen.classList.remove('hidden');
 }
 
-/** Set the LG explore UI into one of four states. */
+/** Set the LG explore UI into one of four status states. */
 function lgSetState(state: 'empty' | 'loading' | 'error' | 'results', errorMsg?: string): void {
   $lgEmptyMsg.classList.toggle('hidden',   state !== 'empty');
   $lgLoadingMsg.classList.toggle('hidden', state !== 'loading');
@@ -646,13 +655,60 @@ function lgSetState(state: 'empty' | 'loading' | 'error' | 'results', errorMsg?:
   if (state === 'error' && errorMsg) $lgErrorMsg.textContent = errorMsg;
 }
 
-function renderLgResults(games: GameSummary[]): void {
+// ---- Player result cards ------------------------------------------------
+
+function renderPlayerResults(players: PlayerResult[]): void {
   $lgResults.innerHTML = '';
-  if (games.length === 0) {
-    lgSetState('error', 'No finished TwixT games found for this player.');
+  lgResultsMode = 'players';
+
+  if (players.length === 0) {
+    lgSetState('error', 'No TwixT players found with that name.');
     return;
   }
   lgSetState('results');
+  for (const p of players) {
+    const card = document.createElement('div');
+    card.className = 'lg-game-card';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'lg-card-players';
+    nameEl.textContent = p.name;
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'lg-card-meta';
+    metaEl.textContent = p.rating ? `Rating: ${p.rating}  ·  id ${p.plid}` : `id ${p.plid}`;
+
+    card.appendChild(nameEl);
+    card.appendChild(metaEl);
+    card.addEventListener('click', () => openPlayerGames(p));
+    $lgResults.appendChild(card);
+  }
+}
+
+// ---- Game result cards --------------------------------------------------
+
+function renderGameResults(games: GameSummary[], backLabel?: string): void {
+  $lgResults.innerHTML = '';
+  lgResultsMode = 'games';
+
+  if (games.length === 0) {
+    lgSetState('error', 'No finished TwixT PP games found for this player.');
+    return;
+  }
+  lgSetState('results');
+
+  // "← back" link at the top of the list when drilling into a player's games
+  if (backLabel) {
+    const backEl = document.createElement('div');
+    backEl.className = 'lg-card-back';
+    backEl.textContent = `← ${backLabel}`;
+    backEl.addEventListener('click', () => {
+      // Re-run the last name search to restore the player list
+      performLgSearch();
+    });
+    $lgResults.appendChild(backEl);
+  }
+
   for (const g of games) {
     const card = document.createElement('div');
     card.className = 'lg-game-card';
@@ -672,6 +728,8 @@ function renderLgResults(games: GameSummary[]): void {
   }
 }
 
+// ---- Search & navigation ------------------------------------------------
+
 async function performLgSearch(): Promise<void> {
   const query = $lgSearchInput.value.trim();
   if (!query) return;
@@ -681,19 +739,33 @@ async function performLgSearch(): Promise<void> {
 
   try {
     if (/^\d+$/.test(query)) {
-      // Looks like a game ID — fetch that game directly
+      // Numeric → treat as game ID, go straight to replay
       diagLog(`lg-fetch-game id=${query}`);
       const parsed = await fetchGame(query);
       openReplayForParsedGame(parsed);
     } else {
-      // Treat as player name
-      diagLog(`lg-fetch-player name=${query}`);
-      const games = await fetchPlayerGames(query);
-      renderLgResults(games);
+      // Text → player name search (step 1 of 2)
+      diagLog(`lg-search-players name=${query}`);
+      const players = await searchPlayers(query);
+      renderPlayerResults(players);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     diagLog(`lg-search-error: ${msg}`);
+    lgSetState('error', `Error: ${msg}`);
+  }
+}
+
+async function openPlayerGames(player: PlayerResult): Promise<void> {
+  lgSetState('loading');
+  $lgResults.innerHTML = '';
+  try {
+    diagLog(`lg-fetch-player-games plid=${player.plid}`);
+    const games = await fetchPlayerGamesByPlid(player.plid);
+    renderGameResults(games, `Players`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    diagLog(`lg-player-games-error: ${msg}`);
     lgSetState('error', `Error: ${msg}`);
   }
 }
@@ -708,7 +780,6 @@ async function openReplayById(id: string): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     diagLog(`lg-open-replay-error: ${msg}`);
     lgSetState('error', `Error: ${msg}`);
-    // Re-show results if there were any
     if ($lgResults.children.length > 0) lgSetState('results');
   }
 }

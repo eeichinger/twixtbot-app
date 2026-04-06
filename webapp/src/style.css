@@ -561,6 +561,17 @@ html, body {
   color: rgba(100,160,220,0.55);
 }
 
+/* "← Players" back link above the game list */
+.lg-card-back {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.6);
+  padding: 6px 0 10px;
+  cursor: pointer;
+}
+.lg-card-back:hover { color: #5dade2; }
+
 /* -------------------------------------------------------------------------
    Replay viewer screen
    ------------------------------------------------------------------------- */
