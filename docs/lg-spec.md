@@ -115,22 +115,51 @@ The `title` attribute of the rating `<span>` contains the numeric Elo rating
 
 ### Player game list page (`player_game_list.jsp`)
 
-The game list page contains links of the form:
+Verified against live HTML for plid=2674 (Alan Hensel), April 2026.
+The page is a static HTML table — no JS injection of game rows.
+
+Each `<tr>` contains exactly 6 `<td>` cells:
 
 ```html
-<a href="/jsp/game/game.jsp?gid=2545876">...</a>
+<tr>
+  <td align="left" bgcolor="#E9D101">
+    <b><a href="/jsp/game/game.jsp?gid=2296844">#2296844</a></b>&nbsp;
+  </td>
+  <td bgcolor="#E9D101">Mirko Rahn&nbsp;</td>
+  <td align="middle" nowrap="">&nbsp;<span title="2364.6">4. dan</span>&nbsp;</td>
+  <td align="left" bgcolor="#E9D101">Twixt PP <span ...>Size 24</span>&nbsp;</td>
+  <td align="right">20&nbsp;</td>
+  <td align="center">lost&nbsp;</td>
+</tr>
 ```
 
-**Extraction regex:**
+| Cell index | Content | Notes |
+|---|---|---|
+| 0 | `#NNNNNN` game link | `gid` extracted from `href` |
+| 1 | Opponent display name | Plain text + `&nbsp;` |
+| 2 | Opponent rating | Inside `<span title="Elo">rank</span>` |
+| 3 | Tournament name + board size | "Twixt PP  Size 24" or tournament link |
+| 4 | Move count | Integer |
+| 5 | Result | `win` / `lost` / `draw` — **player's perspective** |
+
+**Result format from game list** (`win`/`lost`/`draw`) differs from SGF format
+(`B+`/`W+`/`0`). The color each player had is NOT available from this page —
+only the SGF has `PB[name]`/`PW[name]`.
+
+**All games in the sample are `Size 24`** — consistent with TwixT PP being
+24×24 only on LG.
+
+**Extraction approach** (split on `</tr>`, match `<td>` cells per row):
 
 ```typescript
-const re = /\/jsp\/game\/game\.jsp\?gid=(\d+)/g;
+for (const row of html.split('</tr>')) {
+  const gidM = row.match(/href="\/jsp\/game\/game\.jsp\?gid=(\d+)"/);
+  if (!gidM) continue;
+  const cells = [...row.matchAll(/<td[^>]*>(.*?)<\/td>/gi)]
+    .map(m => m[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim());
+  // cells[1]=opponent  cells[4]=moveCount  cells[5]=win|lost|draw
+}
 ```
-
-Each matched `gid` is a finished game ID. The HTML table also contains player
-names and result information, but extracting them reliably requires more
-complex table parsing — the current implementation only extracts game IDs and
-opens the SGF for full metadata.
 
 ### Player profile page (`player.jsp?plid=PLID`)
 

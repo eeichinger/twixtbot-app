@@ -715,11 +715,16 @@ function renderGameResults(games: GameSummary[], backLabel?: string): void {
 
     const players = document.createElement('div');
     players.className = 'lg-card-players';
-    players.textContent = `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
+    if (g.opponent) {
+      players.textContent = `vs ${g.opponent}`;
+    } else {
+      players.textContent = `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
+    }
 
     const meta = document.createElement('div');
     meta.className = 'lg-card-meta';
-    meta.textContent = `#${g.id}  ·  ${formatResult(g.result)}`;
+    const movePart = g.moveCount > 0 ? `${g.moveCount} moves  ·  ` : '';
+    meta.textContent = `#${g.id}  ·  ${movePart}${formatResult(g.result)}`;
 
     card.appendChild(players);
     card.appendChild(meta);

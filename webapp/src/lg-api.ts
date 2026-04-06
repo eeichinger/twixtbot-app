@@ -47,9 +47,15 @@ export interface GameSummary {
   id: string;
   blackPlayer: string;
   whitePlayer: string;
-  result: string;   // Raw LG result: "B+", "W+", "?" etc.
+  /**
+   * From the game list page: "win" | "lost" | "draw" (player's perspective).
+   * From a parsed SGF:        "B+" | "W+" | "0" | "?".
+   */
+  result: string;
   boardSize: number;
   moveCount: number;
+  /** Opponent display name, available when parsed from the game list page. */
+  opponent?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,20 +261,48 @@ function parseGameListTxt(text: string): GameSummary[] {
 }
 
 /**
- * Fall-back HTML parser: extract game IDs from href links.
- * Produces minimal GameSummary objects.
+ * Parse the game-list HTML table from player_game_list.jsp.
+ *
+ * Table columns per row (verified against live HTML, April 2026):
+ *   0: game link "#NNNNNN"
+ *   1: opponent display name
+ *   2: opponent rating span
+ *   3: tournament / game type ("Twixt PP  Size 24")
+ *   4: move count (number)
+ *   5: result from queried player's perspective ("win" | "lost" | "draw")
+ *
+ * blackPlayer/whitePlayer remain "?" — which color each player had is only
+ * available from the SGF, not from this listing page.
  */
 function parseGameListHtml(html: string): GameSummary[] {
   const games: GameSummary[] = [];
   const seen = new Set<string>();
-  const re = /\/jsp\/game\/game\.jsp\?gid=(\d+)/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const id = m[1];
-    if (!seen.has(id)) {
-      seen.add(id);
-      games.push({ id, blackPlayer: '?', whitePlayer: '?', result: '?', boardSize: 24, moveCount: 0 });
-    }
+
+  for (const row of html.split('</tr>')) {
+    const gidM = row.match(/href="\/jsp\/game\/game\.jsp\?gid=(\d+)"/);
+    if (!gidM) continue;
+    const id = gidM[1];
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    // Extract text content of each <td>...</td> in this row
+    const cells = [...row.matchAll(/<td[^>]*>(.*?)<\/td>/gi)]
+      .map(m => m[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim());
+
+    // cells[1] = opponent name, cells[4] = move count, cells[5] = win/lost/draw
+    const opponent = cells[1] || undefined;
+    const moveCount = parseInt(cells[4] ?? '0', 10) || 0;
+    const result = (cells[5] ?? '?').toLowerCase();
+
+    games.push({
+      id,
+      blackPlayer: '?',
+      whitePlayer: '?',
+      result,   // "win" | "lost" | "draw"
+      boardSize: 24,
+      moveCount,
+      opponent,
+    });
   }
   return games;
 }

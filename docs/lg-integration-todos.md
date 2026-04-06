@@ -16,16 +16,18 @@ one by one using a real browser / curl against live LG URLs.
   page). Check response status is 200. Check no extraneous headers or body
   wrapper are injected.
 
-- [ ] **V2 — `player_game_list.jsp` HTML structure**
-  Fetch the game list for a known player:
-  ```
-  https://www.littlegolem.net/jsp/info/player_game_list.jsp?gtid=twixt&plid=2674
-  ```
-  Verify: the page contains links matching the pattern
-  `/jsp/game/game\.jsp\?gid=(\d+)` (the regex used in `parseGameListHtml`).
-  Confirm the links are in the HTML body (not injected by JS). Confirm there
-  are no relative-URL-only variants.
-  If the structure differs, update `parseGameListHtml` in `lg-api.ts`.
+- [x] **V2 — `player_game_list.jsp` HTML structure** ✓ RESOLVED (April 2026)
+  Verified from live HTML for plid=2674 (Alan Hensel). The page is a static
+  HTML table — no JS injection. Each row contains:
+  - Game link: `href="/jsp/game/game.jsp?gid=NNNN"` ✓
+  - Opponent name: 2nd `<td>` in the row
+  - Move count: 5th `<td>`, plain integer
+  - Result: 6th `<td>`, text `win` / `lost` / `draw` (player's perspective)
+  - Board size: "Size 24" text in the tournament column (all games are 24×24)
+
+  `parseGameListHtml` has been upgraded from ID-only to full row extraction.
+  Opponent, move count, and result are now parsed. The `GameSummary` type
+  gained an `opponent?: string` field.
 
 - [ ] **V3 — `player_list.jsp` rating span proximity**
   Fetch the player search results page:
@@ -48,11 +50,12 @@ one by one using a real browser / curl against live LG URLs.
   Decision needed before shipping.
 
 - [ ] **V5 — Non-24 board size handling**
-  Confirm whether LG hosts any TwixT PP games with board sizes other than 24×24.
-  If they exist: `replayShowAtIndex` in `main.ts` creates `new Game()` which
-  hard-codes 24×24 — it ignores `parsedGame.boardSize`. Fix if needed.
-  If all LG TwixT PP games are 24×24: add an assertion/error in `fetchGame`
-  to reject non-24 SGFs gracefully rather than mis-replaying.
+  All games visible in the Alan Hensel game list show "Size 24" — strong
+  indication LG only runs 24×24 TwixT PP. Confirm no other size exists.
+  If all LG TwixT PP games are 24×24: add a guard in `fetchGame` to reject
+  non-24 SGFs gracefully rather than mis-replaying.
+  If other sizes exist: `replayShowAtIndex` in `main.ts` creates `new Game()`
+  which hard-codes 24×24 — fix it to use `parsedGame.boardSize`.
 
 - [ ] **V6 — corsproxy.io response encoding for SGF**
   Confirm the SGF response from corsproxy.io is plain UTF-8 text (not

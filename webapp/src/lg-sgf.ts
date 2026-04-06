@@ -78,10 +78,16 @@ export function parseTSGF(text: string, id = ''): ParsedGame {
   return game;
 }
 
-/** Return a human-readable result string, e.g. "Black wins", "White wins", "Draw". */
+/**
+ * Return a human-readable result string.
+ * Handles both SGF format ("B+", "W+", "0") and game-list format
+ * ("win", "lost", "draw" — relative to the player whose list was fetched).
+ */
 export function formatResult(result: string): string {
   if (result === 'B+' || result.startsWith('B+')) return 'Black wins';
   if (result === 'W+' || result.startsWith('W+')) return 'White wins';
-  if (result === '0') return 'Draw';
+  if (result === '0' || result === 'draw') return 'Draw';
+  if (result === 'win') return 'Win';
+  if (result === 'lost') return 'Lost';
   return result || '—';
 }
