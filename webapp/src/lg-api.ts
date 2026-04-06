@@ -99,20 +99,10 @@ function parsePlayerListHtml(html: string): PlayerResult[] {
  * HTML URL: /jsp/info/player_game_list.jsp?gtid=twixt.PP&plid=PLID
  */
 export async function fetchPlayerGamesByPlid(plid: string): Promise<GameSummary[]> {
-  // Try plain-text endpoint first
-  const txtUrl = `${LG_BASE}/jsp/info/player_game_list_txt.jsp?gtid=twixt.PP&plid=${encodeURIComponent(plid)}`;
-  const res = await fetchProxied(txtUrl);
-  const body = await res.text();
-
-  const txtGames = parseGameListTxt(body);
-  if (txtGames.length > 0) return txtGames;
-
-  // Fall back to HTML
-  const htmlGames = parseGameListHtml(body);
-  if (htmlGames.length > 0) return htmlGames;
-
-  // Empty response or player has no finished TwixT PP games
-  return [];
+  const url = `${LG_BASE}/jsp/info/player_game_list.jsp?gtid=twixt&plid=${encodeURIComponent(plid)}`;
+  const res = await fetchProxied(url);
+  const html = await res.text();
+  return parseGameListHtml(html);
 }
 
 // ---------------------------------------------------------------------------
