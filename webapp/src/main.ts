@@ -23,7 +23,7 @@ import { formatResult, type ParsedGame } from './lg-sgf.js';
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-05-h';
+const APP_VERSION = '2026-04-06-a';
 
 // -------------------------------------------------------------------------
 // Constants
