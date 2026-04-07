@@ -35,17 +35,24 @@ export default {
       return new Response('Only littlegolem.net URLs are allowed', { status: 403 });
     }
 
-    // Fetch from LG
+    // Fetch from LG with a 10s timeout
     let lgResponse;
     try {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 10_000);
       lgResponse = await fetch(targetUrl.toString(), {
+        signal: abort.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; twixtbot-app/1.0)',
         },
       });
+      clearTimeout(timer);
     } catch (err) {
-      return new Response('Failed to fetch from littlegolem.net: ' + err.message, { status: 502 });
+      const msg = err.name === 'AbortError' ? 'Timeout fetching from littlegolem.net' : 'Failed to fetch from littlegolem.net: ' + err.message;
+      console.error(msg, targetUrl.toString());
+      return new Response(msg, { status: 502 });
     }
+    console.log(`LG ${lgResponse.status} ${targetUrl.toString()}`);
 
     // Forward the response body with CORS headers added
     const headers = new Headers(lgResponse.headers);
