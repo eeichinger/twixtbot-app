@@ -7,7 +7,7 @@ for future development of the twixtbot-app project.
 
 ## Git Workflow
 
-**Always commit directly to `main`.** No feature branches. Push to `origin main` after each logical change.
+> **IMPORTANT: Always work directly on the `main` branch. Never create feature branches. Push to `origin main` after each logical change.**
 
 ---
 
