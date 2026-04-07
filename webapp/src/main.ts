@@ -17,13 +17,13 @@ import {
   type GameMode,
 } from './game-mode.js';
 import { fetchGame, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
-import { parseTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
+import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-07-b';
+const APP_VERSION = '2026-04-07-c';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -201,6 +201,7 @@ const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
+const $exportBtn       = document.getElementById('export-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
 
@@ -240,6 +241,8 @@ let workerLoading = false;
 let userClickedStart = false;
 let gameOver = false;
 let aiThinking = false;
+/** TSGF result for the current game: 'B+' | 'W+' | '0' | '?'. WHITE is first mover = TSGF Black. */
+let tsgfResult = '?';
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
 let gameMode: GameMode = loadGameMode();
 
@@ -404,10 +407,12 @@ function onHumanMove(p: { x: number; y: number }): void {
     // The player who just moved won: turn has already switched to the next player,
     // so the winner is the opposite of game.turn.
     const winner = game.turn === WHITE ? BLACK : WHITE;
+    tsgfResult = winner === WHITE ? 'B+' : 'W+';  // WHITE = first mover = TSGF Black
     endGame(resultMessage(winner, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
+    tsgfResult = '0';
     endGame(resultMessage(null, gameMode));
     return;
   }
@@ -460,11 +465,13 @@ function onAiMove(moveMsg: MoveMsg): void {
 
   if (game.justWon()) {
     board.setGame(game, false);
+    tsgfResult = movedColor === WHITE ? 'B+' : 'W+';  // WHITE = first mover = TSGF Black
     endGame(resultMessage(movedColor, gameMode));
     return;
   }
   if (game.legalPlays().length === 0) {
     board.setGame(game, false);
+    tsgfResult = '0';
     endGame(resultMessage(null, gameMode));
     return;
   }
@@ -529,6 +536,45 @@ function onUndoClick(): void {
   }
 }
 
+function onExportClick(): void {
+  if (game.history.length === 0) return;  // nothing to export yet
+
+  // In the webapp WHITE is the first mover; TSGF labels the first mover "B" (Black).
+  // So webapp WHITE → TSGF PB, webapp BLACK → TSGF PW.
+  let pbName: string, pwName: string;
+  if (gameMode === 'pvc') {
+    pbName = 'TwixtBot';  // WHITE = AI = first mover
+    pwName = 'Human';     // BLACK = human = second mover
+  } else {
+    pbName = 'Orange';    // WHITE = first mover
+    pwName = 'Blue';      // BLACK = second mover
+  }
+
+  const text = serializeTSGF(game.history, {
+    blackPlayer: pbName,
+    whitePlayer: pwName,
+    result: tsgfResult,
+  });
+
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+             `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const filename = `twixt${ts}.tsgf`;
+
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  diagLog(`game-exported ${filename} moves=${game.history.length}`);
+}
+
 function showIntro(result?: string): void {
   diagLog(`show-intro${result ? ': ' + result : ''}`);
   stopHeartbeat();
@@ -558,8 +604,9 @@ function startNewGame(): void {
     workerAlive = false;
     diagLog('worker-terminated (new-game cancelled in-flight move)');
   }
-  gameOver   = false;
-  aiThinking = false;
+  gameOver    = false;
+  aiThinking  = false;
+  tsgfResult  = '?';
   game = new Game();
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
@@ -879,6 +926,7 @@ function init(): void {
   $undoBtn.addEventListener('click',    onUndoClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
+  $exportBtn.addEventListener('click',  onExportClick);
 
   // LG Explore button on intro screen
   document.getElementById('lg-explore-btn')?.addEventListener('click', () => {

@@ -78,6 +78,54 @@ export function parseTSGF(text: string, id = ''): ParsedGame {
   return game;
 }
 
+/** Convert a board Point to a two-letter LG coordinate like "hd". */
+function pointToLgCoord(p: Point): string {
+  return String.fromCharCode(97 + p.x) + String.fromCharCode(97 + p.y);
+}
+
+export interface SerializeTsgfOptions {
+  /** Name of the TSGF Black player (first mover). */
+  blackPlayer?: string;
+  /** Name of the TSGF White player (second mover). */
+  whitePlayer?: string;
+  /**
+   * SGF result string: "B+" (Black/first-mover wins), "W+" (White/second-mover wins),
+   * "0" (draw), or "?" (unknown / game in progress).
+   */
+  result?: string;
+}
+
+/**
+ * Serialize a move history to a Little Golem–compatible .tsgf string.
+ *
+ * IMPORTANT — color mapping:
+ *   In the webapp WHITE is the first mover; in SGF/TSGF the first mover is "B" (Black).
+ *   So the caller must swap the semantic meaning when building the options:
+ *     webapp WHITE (first mover)  → TSGF PB / "B[…]" moves
+ *     webapp BLACK (second mover) → TSGF PW / "W[…]" moves
+ *   The result string must follow the same convention ("B+" = first mover won).
+ */
+export function serializeTSGF(moves: MoveRecord[], options: SerializeTsgfOptions = {}): string {
+  const pb = options.blackPlayer ?? '?';
+  const pw = options.whitePlayer ?? '?';
+  const re = options.result     ?? '?';
+
+  let sgf = `(;GM[21]FF[4]SZ[24]RU[PP]PB[${pb}]PW[${pw}]RE[${re}]`;
+
+  for (let i = 0; i < moves.length; i++) {
+    const color = i % 2 === 0 ? 'B' : 'W';
+    const move = moves[i];
+    if (move === 'swap') {
+      sgf += `;${color}[swap]`;
+    } else {
+      sgf += `;${color}[${pointToLgCoord(move as Point)}]`;
+    }
+  }
+
+  sgf += ')';
+  return sgf;
+}
+
 /**
  * Return a human-readable result string.
  * Handles both SGF format ("B+", "W+", "0") and game-list format
