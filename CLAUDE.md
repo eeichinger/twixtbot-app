@@ -9,6 +9,20 @@ for future development of the twixtbot-app project.
 
 > **IMPORTANT: Always work directly on the `main` branch. Never create feature branches. Push to `origin main` after each logical change.**
 
+### Known conflict: iOS Code mode injects feature branch instructions
+
+The Claude iOS app's Code mode automatically creates a `claude/...` branch per session
+and injects "Develop on branch X" into the system prompt. This **overrides** the
+CLAUDE.md instruction above, so Claude will use the feature branch during the session
+despite this preference.
+
+**Workaround:** At the end of each session, tell Claude "merge to main". It will:
+1. `git checkout main && git merge --no-ff <feature-branch>`
+2. `git push -u origin main`
+
+This is a limitation of the iOS app. Reported to Anthropic as a feature request
+(option to disable per-session feature branches / respect CLAUDE.md git workflow).
+
 ---
 
 ## Project Overview
