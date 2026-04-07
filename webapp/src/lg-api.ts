@@ -133,6 +133,17 @@ async function mockFetchGame(id: string): Promise<ParsedGame> {
   return parseTSGF(makeMockSgf('Player1', 'Player2', 'B+'), id);
 }
 
+async function mockFetchGameRaw(id: string): Promise<string> {
+  await delay(500);
+  if (id === '2546140') return MOCK_SGF_2546140;
+  if (id === '2060663') return MOCK_SGF_2060663;
+  for (const games of Object.values(MOCK_GAMES_BY_PLID)) {
+    const g = games.find(g => g.id === id);
+    if (g) return makeMockSgf(g.blackPlayer, g.whitePlayer, g.result);
+  }
+  return makeMockSgf('Player1', 'Player2', 'B+');
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -214,6 +225,17 @@ export async function fetchGame(id: string): Promise<ParsedGame> {
     throw new Error('Not a TwixT game (GM[21] not found)');
   }
   return parseTSGF(text, id);
+}
+
+/**
+ * Fetch the raw SGF text of a game from Little Golem without parsing.
+ * Used for direct file download.
+ */
+export async function fetchGameRaw(id: string): Promise<string> {
+  if (MOCK_MODE) return mockFetchGameRaw(id);
+  const url = `${LG_BASE}/servlet/sgf/${id}/game${id}.tsgf`;
+  const res = await fetchProxied(url);
+  return res.text();
 }
 
 // ---------------------------------------------------------------------------
