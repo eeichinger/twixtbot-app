@@ -40,9 +40,9 @@ Check items off as they are shipped.
 - [x] **Keyboard shortcut** — arrow keys (←/→) and Home/End fully working
       in `main.ts`; active whenever the replay screen is visible.
 
-- [ ] **Pagination / load more** — the game list currently shows all games
-      returned by `player_game_list.jsp`. LG paginates at ~20 rows; add a
-      "Load more" button if the list is truncated.
+- [x] **Pagination / load more** — not needed. Verified: `player_game_list.jsp`
+      returns all games for a player in a single response with no server-side
+      pagination.
 
 ---
 
