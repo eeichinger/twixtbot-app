@@ -39,7 +39,7 @@ const COLORS = {
   // Subtle grid lines on the light field
   grid:            'rgba(0,30,0,0.10)',
   // Anbindungslinien (strategic guiding lines)
-  guideLine:       'rgba(0,50,0,0.20)',
+  guideLine:       'rgba(0,50,0,0.30)',
   // Left/right strips = BLACK's goal edges → tinted blue
   borderZoneBlack: 'rgba(0,80,200,0.12)',
   // Top/bottom strips = WHITE's goal edges → tinted orange
