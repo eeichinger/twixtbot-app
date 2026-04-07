@@ -562,7 +562,7 @@ function onExportClick(): void {
              `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const filename = `twixt${ts}.tsgf`;
 
-  const blob = new Blob([text], { type: 'text/plain' });
+  const blob = new Blob([text], { type: 'application/octet-stream' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
