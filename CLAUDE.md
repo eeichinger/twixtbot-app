@@ -5,6 +5,12 @@ for future development of the twixtbot-app project.
 
 ---
 
+## Git Workflow
+
+**Always commit directly to `main`.** No feature branches. Push to `origin main` after each logical change.
+
+---
+
 ## Project Overview
 
 A web app that lets a human play TwixT against a neural network AI, deployed
