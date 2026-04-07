@@ -38,8 +38,8 @@ const COLORS = {
   boardField:      '#d8ecc4',
   // Subtle grid lines on the light field
   grid:            'rgba(0,30,0,0.10)',
-  // Anbindungslinien (strategic guiding diagonals) — very faint
-  guideLine:       'rgba(0,50,0,0.09)',
+  // Anbindungslinien (strategic guiding lines)
+  guideLine:       'rgba(0,50,0,0.20)',
   // Left/right strips = BLACK's goal edges → tinted blue
   borderZoneBlack: 'rgba(0,80,200,0.12)',
   // Top/bottom strips = WHITE's goal edges → tinted orange
@@ -273,32 +273,50 @@ export class BoardUI {
   }
 
   /**
-   * Draw the Anbindungslinien (strategic guiding diagonals).
+   * Draw the Anbindungslinien (strategic guiding lines).
    *
-   * These are the two board diagonals corner-to-corner.  They pass through the
-   * four strategically important intersection points I9/P16 and P9/I16, which
-   * mark the extreme reach of a connected chain toward each corner.  Drawn
-   * very faintly so they guide without distracting.
+   * Each corner of the inner playable area (B2, W2, B23, W23 in board notation)
+   * spawns two lines at 1:2 and 2:1 slopes — the two extreme knight-move
+   * trajectories that can still reach the far baseline.  That gives 8 lines
+   * total (2 per corner × 4 corners), related by 90° rotation symmetry.
+   *
+   * In 0-indexed board coordinates the 4 anchor points and their targets are:
+   *   TL (1, 1)  → (21,11) slope½   and → (11,21) slope2
+   *   TR (22, 1) → ( 2,11) slope½   and → (12,21) slope2
+   *   BR (22,22) → ( 2,12) slope½   and → (12, 2) slope2
+   *   BL ( 1,22) → (21,12) slope½   and → (11, 2) slope2
    */
   private _drawGuideLines(): void {
     const { ctx } = this;
-    const [x0, y0] = this._toCanvas(pt(0, 0));
-    const [xN, yN] = this._toCanvas(pt(SIZE - 1, SIZE - 1));
     ctx.save();
     ctx.strokeStyle = COLORS.guideLine;
     ctx.lineWidth   = 1.5;
     ctx.lineCap     = 'round';
     ctx.setLineDash([5, 7]);
-    // Main diagonal: top-left → bottom-right
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(xN, yN);
-    ctx.stroke();
-    // Anti-diagonal: top-right → bottom-left
-    ctx.beginPath();
-    ctx.moveTo(xN, y0);
-    ctx.lineTo(x0, yN);
-    ctx.stroke();
+
+    const lines: [Point, Point][] = [
+      // Top-left corner (B2)
+      [pt( 1,  1), pt(21, 11)],
+      [pt( 1,  1), pt(11, 21)],
+      // Top-right corner (W2)
+      [pt(22,  1), pt( 2, 11)],
+      [pt(22,  1), pt(12, 21)],
+      // Bottom-right corner (W23)
+      [pt(22, 22), pt( 2, 12)],
+      [pt(22, 22), pt(12,  2)],
+      // Bottom-left corner (B23)
+      [pt( 1, 22), pt(21, 12)],
+      [pt( 1, 22), pt(11,  2)],
+    ];
+
+    for (const [a, b] of lines) {
+      const [ax, ay] = this._toCanvas(a);
+      const [bx, by] = this._toCanvas(b);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
