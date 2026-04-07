@@ -206,7 +206,7 @@ export async function fetchGame(id: string): Promise<ParsedGame> {
   const url = `${LG_BASE}/servlet/sgf/${id}/game${id}.tsgf`;
   const res = await fetchProxied(url);
   const text = await res.text();
-  if (!text.includes('GM[21]')) {
+  if (!text.includes('GM[21]') && !text.includes('EV[twixt')) {
     // Might be a login redirect or error page
     if (text.includes('<html') || text.includes('login')) {
       throw new Error('Game not accessible — LG may require login for this content');
