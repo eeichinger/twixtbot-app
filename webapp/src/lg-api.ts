@@ -2,8 +2,7 @@
  * lg-api.ts — Little Golem read-only API client.
  *
  * CORS: LG does not send CORS headers, so browser fetch() is blocked.
- * PROXY_PREFIX defaults to corsproxy.io (zero infrastructure, public data).
- * Replace with a Cloudflare Worker or other proxy if needed.
+ * Requests are routed through a Cloudflare Worker at eeichinger.workers.dev.
  *
  * Player search is a two-step flow:
  *   1. searchPlayers(name)          → PlayerResult[] (name + numeric plid)
@@ -25,7 +24,7 @@ const MOCK_MODE = true;
 // CORS proxy — change this constant to switch proxy implementations
 // ---------------------------------------------------------------------------
 
-const PROXY_PREFIX = 'https://corsproxy.io/?url=';
+const PROXY_PREFIX = 'https://littlegolem-proxy.eeichinger.workers.dev/?url=';
 
 const LG_BASE = 'https://www.littlegolem.net';
 
