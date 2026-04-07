@@ -989,7 +989,10 @@ function init(): void {
   });
 
   // Replay screen — back and step controls
-  document.getElementById('replay-back-btn')?.addEventListener('click', () => showLgScreen());
+  document.getElementById('replay-back-btn')?.addEventListener('click', () => {
+    showLgScreen();
+    if ($lgResults.children.length > 0) lgSetState('results');
+  });
   $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
   $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));
   $replayNextBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex + 1));
