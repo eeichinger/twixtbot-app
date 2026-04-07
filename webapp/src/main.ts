@@ -823,6 +823,13 @@ function replayShowAtIndex(index: number): void {
 
 function init(): void {
   diagInit();
+  // Handle race: SW controllerchange may have fired before this module loaded.
+  // The inline script in index.html caught it and set this flag.
+  if ((window as unknown as Record<string, unknown>).__pendingSWReload) {
+    diagLog('sw-controllerchange-early');
+    window.location.reload();
+    return;
+  }
   diagLog(`app-start v=${APP_VERSION}`);
   diagLog(`sw-controller: ${navigator.serviceWorker?.controller?.scriptURL ?? 'none'}`);
   diagLog(`ua: ${navigator.userAgent.substring(0, 80)}`);
