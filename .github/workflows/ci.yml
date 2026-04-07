@@ -73,8 +73,6 @@ jobs:
   webapp:
     name: Webapp (test + build + deploy)
     runs-on: ubuntu-latest
-    name: Webapp (test + build + deploy)
-    runs-on: ubuntu-latest
     needs: export-model
 
     # Allow the job to write to GitHub Pages
