@@ -27,24 +27,21 @@ Check items off as they are shipped.
 
 ## Near-term ideas
 
-- [ ] **Show which color the player was** — the game list page doesn't say
-      whether the searched player was Black or White; this is only available
-      from the SGF. After loading the SGF, compare `PB`/`PW` to the player
-      name and label the card accordingly.
+- [x] **Show which color the player was** — `PB`/`PW` parsed from SGF;
+      replay title shows "BlackPlayer vs WhitePlayer #id".
 
-- [ ] **Result from SGF perspective** — game list shows "win/lost" from the
-      searched player's perspective; replay header could show "Black wins" /
-      "White wins" (from the SGF `RE` field) once the game is loaded.
+- [x] **Result from SGF perspective** — `RE` field parsed in `lg-sgf.ts`;
+      `formatResult()` converts "B+"/"W+"/"0" to human-readable text;
+      shown in the game list card.
 
-- [ ] **Highlight last move** — draw a ring or glow on the peg placed in the
-      most recently stepped-to move, so the viewer can immediately see where
-      the action is.
+- [x] **Highlight last move** — red ring (`#cc2040`) drawn on the most
+      recently stepped-to peg in `ui.ts`.
 
 - [ ] **Auto-advance / autoplay** — a Play button that steps through moves
       automatically at a configurable speed (e.g. 1 move/sec).
 
-- [ ] **Keyboard shortcut** — already works (arrow keys); confirm it works
-      on desktop and document it somewhere visible in the UI.
+- [x] **Keyboard shortcut** — arrow keys (←/→) and Home/End fully working
+      in `main.ts`; active whenever the replay screen is visible.
 
 - [ ] **Pagination / load more** — the game list currently shows all games
       returned by `player_game_list.jsp`. LG paginates at ~20 rows; add a
