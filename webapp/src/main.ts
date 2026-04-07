@@ -16,7 +16,7 @@ import {
   isHumanTurn, turnStatusText, resultMessage,
   type GameMode,
 } from './game-mode.js';
-import { fetchGame, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
+import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
 import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
@@ -703,16 +703,38 @@ function lgSetState(state: 'empty' | 'loading' | 'error' | 'results', errorMsg?:
 function makeLgCard(line1: string, line2: string, onClick: () => void): HTMLDivElement {
   const card = document.createElement('div');
   card.className = 'lg-game-card';
+  const content = document.createElement('div');
+  content.className = 'lg-card-content';
   const el1 = document.createElement('div');
   el1.className = 'lg-card-players';
   el1.textContent = line1;
   const el2 = document.createElement('div');
   el2.className = 'lg-card-meta';
   el2.textContent = line2;
-  card.appendChild(el1);
-  card.appendChild(el2);
+  content.appendChild(el1);
+  content.appendChild(el2);
+  card.appendChild(content);
   card.addEventListener('click', onClick);
   return card;
+}
+
+async function saveLgGame(id: string): Promise<void> {
+  try {
+    const text = await fetchGameRaw(id);
+    const filename = `game${id}.tsgf`;
+    const blob = new Blob([text], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    diagLog(`lg-game-saved id=${id} filename=${filename}`);
+  } catch (err) {
+    diagLog(`lg-save-error id=${id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function lgHandleError(diagKey: string, err: unknown): void {
@@ -757,7 +779,14 @@ function renderGameResults(games: GameSummary[]): void {
     const line1 = g.opponent ? `vs ${g.opponent}` : `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
     const movePart = g.moveCount > 0 ? `${g.moveCount} moves  ·  ` : '';
     const line2 = `#${g.id}  ·  ${movePart}${formatResult(g.result)}`;
-    $lgResults.appendChild(makeLgCard(line1, line2, () => openReplayById(g.id)));
+    const card = makeLgCard(line1, line2, () => openReplayById(g.id));
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'lg-save-btn';
+    saveBtn.title = 'Save game file to device';
+    saveBtn.textContent = '\u2B07';  // ⬇ downwards black arrow
+    saveBtn.addEventListener('click', (e) => { e.stopPropagation(); saveLgGame(g.id); });
+    card.appendChild(saveBtn);
+    $lgResults.appendChild(card);
   }
 }
 
