@@ -71,8 +71,41 @@ jobs:
           if-no-files-found: error
 
   # -----------------------------------------------------------------------
-  # TypeScript webapp: type-check, test, build, deploy to GitHub Pages
+  # Probe Cloudflare Worker: TLS certificate + HTTP response diagnostics
   # -----------------------------------------------------------------------
+  probe-cloudflare-worker:
+    name: Probe Cloudflare Worker (TLS + HTTP)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: TLS certificate check (openssl)
+        run: |
+          echo "=== openssl TLS handshake ==="
+          echo | openssl s_client \
+            -connect littlegolem-proxy.eeichinger.workers.dev:443 \
+            -servername littlegolem-proxy.eeichinger.workers.dev \
+            -showcerts 2>&1 | head -60
+
+      - name: curl verbose — worker root (no target)
+        run: |
+          echo "=== curl: worker root ==="
+          curl -v -k --max-time 15 \
+            "https://littlegolem-proxy.eeichinger.workers.dev/" \
+            2>&1 || true
+
+      - name: curl verbose — proxy SGF file
+        run: |
+          echo "=== curl: proxy LG SGF ==="
+          curl -v -k --max-time 15 \
+            "https://littlegolem-proxy.eeichinger.workers.dev/?url=https%3A%2F%2Fwww.littlegolem.net%2Fservlet%2Fsgf%2F2546140%2Fgame2546140.tsgf" \
+            2>&1 || true
+
+      - name: curl verbose — direct LG SGF (no proxy, for comparison)
+        run: |
+          echo "=== curl: direct LG SGF (baseline) ==="
+          curl -v -k --max-time 15 \
+            "https://www.littlegolem.net/servlet/sgf/2546140/game2546140.tsgf" \
+            2>&1 || true
   webapp:
     name: Webapp (test + build + deploy)
     runs-on: ubuntu-latest
