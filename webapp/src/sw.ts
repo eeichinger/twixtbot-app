@@ -21,9 +21,19 @@ const WASM_CACHE  = 'twixt-wasm';
 // ── Install: populate precache ───────────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
-  // self.__WB_MANIFEST is replaced at build time by vite-plugin-pwa
-  const urls: string[] = ((self as unknown as Record<string, unknown>).__WB_MANIFEST as Array<{ url: string }> ?? [])
-    .map((e) => e.url);
+  // self.__WB_MANIFEST is replaced at build time by vite-plugin-pwa.
+  // Entries with revision===null have a content hash in the URL (e.g. assets/index-AbCd.js)
+  // so the URL itself is cache-safe.  Entries with a non-null revision are
+  // non-hashed URLs (e.g. index.html) — we must bypass the HTTP cache when
+  // fetching them, otherwise iOS's system-level HTTP disk cache (which persists
+  // through "Delete Website Data") can cause us to precache stale content.
+  type ManifestEntry = { url: string; revision: string | null };
+  const manifest = ((self as unknown as Record<string, unknown>).__WB_MANIFEST as ManifestEntry[] ?? []);
+  const requests = manifest.map((e) =>
+    e.revision !== null
+      ? new Request(e.url, { cache: 'reload' })  // non-hashed URL: force fresh fetch
+      : e.url                                     // hashed URL: URL uniqueness is enough
+  );
 
   // skipWaiting() lets the new SW take control immediately instead of waiting
   // for all tabs to close.  The client (main.ts) listens for 'controllerchange'
@@ -31,7 +41,7 @@ self.addEventListener('install', (event) => {
   // computation is never interrupted.
   self.skipWaiting();
   event.waitUntil(
-    caches.open(PRECACHE).then((cache) => cache.addAll(urls)),
+    caches.open(PRECACHE).then((cache) => cache.addAll(requests)),
   );
 });
 
@@ -81,23 +91,36 @@ self.addEventListener('fetch', (event) => {
 });
 
 async function handleFetch(request: Request): Promise<Response> {
-  // 1. App shell / precached assets
+  const url = request.url;
+
+  // 1. Navigation requests (index.html / app entry point): network-first.
+  //    iOS's system-level HTTP disk cache can survive "Delete Website Data" and
+  //    serve stale index.html to non-private tabs.  Fetching with cache:'no-cache'
+  //    forces a conditional request (If-None-Match / 304) that bypasses the disk
+  //    cache, ensuring users always get the latest app shell when online.
+  //    Falls back to the precached copy for offline use.
+  if (request.mode === 'navigate') {
+    try {
+      const fresh = await fetch(new Request(request, { cache: 'no-cache' }));
+      if (fresh.ok) {
+        (await caches.open(PRECACHE)).put(request, fresh.clone());
+        return withCOI(fresh);
+      }
+    } catch { /* offline — fall through to cache */ }
+    const cached = await caches.match(request);
+    if (cached) return withCOI(cached);
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
+
+  // 2. App shell / precached assets (hashed URLs — cache-first is safe)
   const precached = await caches.match(request, { cacheName: PRECACHE });
   if (precached) return withCOI(precached);
 
-  const url = request.url;
-
-  // 2. ONNX model — large, stable, cache indefinitely
+  // 3. ONNX model — large, stable, cache indefinitely
   if (/\/model\.onnx(\?|$)/.test(url)) return cacheFirst(request, MODEL_CACHE);
 
-  // 3. WASM binaries — large, stable, cache indefinitely
+  // 4. WASM binaries — large, stable, cache indefinitely
   if (/\.wasm(\?|$)/.test(url)) return cacheFirst(request, WASM_CACHE);
-
-  // 4. Navigation requests (e.g. start_url variants) — fall back to cached index.html
-  if (request.mode === 'navigate') {
-    const indexFallback = await caches.match('/twixtbot-app/index.html');
-    if (indexFallback) return withCOI(indexFallback);
-  }
 
   // 5. Anything else — network with COI headers; return offline error if network unavailable
   try {
