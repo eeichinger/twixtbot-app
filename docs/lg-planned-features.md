@@ -37,9 +37,6 @@ Check items off as they are shipped.
 - [x] **Highlight last move** — red ring (`#cc2040`) drawn on the most
       recently stepped-to peg in `ui.ts`.
 
-- [ ] **Auto-advance / autoplay** — a Play button that steps through moves
-      automatically at a configurable speed (e.g. 1 move/sec).
-
 - [x] **Keyboard shortcut** — arrow keys (←/→) and Home/End fully working
       in `main.ts`; active whenever the replay screen is visible.
 
@@ -47,14 +44,30 @@ Check items off as they are shipped.
       returned by `player_game_list.jsp`. LG paginates at ~20 rows; add a
       "Load more" button if the list is truncated.
 
-- [ ] **Current (in-progress) games** — `player_game_list.jsp` only shows
-      finished games. In-progress games appear on a different LG page;
-      investigate whether they can be loaded for analysis mid-game.
+---
 
-- [ ] **Deep link / shareable URL** — encode the LG game ID in the URL hash
-      (`#lg/2060663`) so a user can share a direct link to a replay. The PWA
-      start_url constraint makes this non-trivial (service worker navigation
-      fallback must handle the hash).
+## LG Network Play — play against other humans on Little Golem
+
+> **Important but complex — needs conceptualization before implementation.**
+>
+> The idea: use twixtbot-app as a client to play correspondence TwixT games
+> on Little Golem against other human players, rather than only replaying
+> finished games. LG is a turn-based (correspondence) server, so moves are
+> submitted via HTTP, not a live socket.
+>
+> Key questions to answer during conceptualization:
+> - Does LG expose a usable API for submitting moves, or does it require
+>   form POST replication scraped from the game page HTML?
+> - How does authentication work — session cookie, username/password form?
+>   The Cloudflare Worker proxy would need to forward auth headers or handle
+>   login on behalf of the user.
+> - How does the app poll for the opponent's move (LG has no push/websocket)?
+> - Where does the user's LG login credential live — entered once and stored
+>   in localStorage, or re-entered each session?
+> - How does this interact with the existing PvC and PvP modes — new mode
+>   on the intro screen, or a separate entry point from the LG Explore screen?
+> - Privacy/security: credentials must never be sent anywhere except LG via
+>   the proxy; the proxy must be hardened to only forward to `littlegolem.net`.
 
 ---
 
