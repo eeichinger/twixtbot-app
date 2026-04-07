@@ -28,32 +28,38 @@ import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt } from './twixt.js';
 // Colours
 // -------------------------------------------------------------------------
 
-// Wong color-blind-safe palette: blue (#0072B2) for human (BLACK),
-// orange (#E69F00) for AI (WHITE).  Works for deuteranopia, protanopia,
-// tritanopia.  Peg/link hues are unchanged; only bg/grid/node adapted for
-// dark blueprint theme.
+// Color scheme: light sage-green playing field with dark outer ring.
+// Blue (#0a3c96) for human (BLACK), orange (#b04800) for AI (WHITE).
+// High contrast on light board; works for deuteranopia, protanopia, tritanopia.
 const COLORS = {
-  bg:              '#162540',
-  grid:            'rgba(100,160,220,0.12)',
+  // Dark outer ring where labels live
+  bg:              '#2c3428',
+  // Light sage-green playing field (drawn as filled rect over bg)
+  boardField:      '#d8ecc4',
+  // Subtle grid lines on the light field
+  grid:            'rgba(0,30,0,0.10)',
+  // Anbindungslinien (strategic guiding diagonals) — very faint
+  guideLine:       'rgba(0,50,0,0.09)',
   // Left/right strips = BLACK's goal edges → tinted blue
-  borderZoneBlack: 'rgba(86, 180, 233, 0.18)',
+  borderZoneBlack: 'rgba(0,80,200,0.12)',
   // Top/bottom strips = WHITE's goal edges → tinted orange
-  borderZoneWhite: 'rgba(230, 159, 0, 0.20)',
+  borderZoneWhite: 'rgba(200,100,0,0.12)',
   // Accent lines along goal edges
-  borderLineBlack: '#0072b2',
-  borderLineWhite: '#e69f00',
-  node:            'rgba(100,160,220,0.28)',
-  nodeHover:       '#5dade2',
+  borderLineBlack: '#005ab5',
+  borderLineWhite: '#b06000',
+  // Empty intersection dots on the light board
+  node:            'rgba(0,40,0,0.45)',
+  nodeHover:       '#1a50b0',
   // Human player = blue
-  pegBlack:        '#0057b8',
-  pegBlackRim:     '#56b4e9',
+  pegBlack:        '#0a3c96',
+  pegBlackRim:     '#6090e0',
   // AI player = orange
-  pegWhite:        '#c87800',
-  pegWhiteRim:     '#f0c040',
-  linkBlack:       '#0072b2',
-  linkWhite:       '#e69f00',
-  lastMove:        '#d55e00',   // vermillion — distinct from both blue & orange
-  winLine:         '#cc79a7',   // reddish-purple
+  pegWhite:        '#b04800',
+  pegWhiteRim:     '#e0a040',
+  linkBlack:       '#0a3c96',
+  linkWhite:       '#b04800',
+  lastMove:        '#cc2040',   // red ring for most-recent move
+  winLine:         '#8820a8',   // purple
 };
 
 // -------------------------------------------------------------------------
@@ -238,18 +244,62 @@ export class BoardUI {
     if (!this.game) return;
     const { ctx, canvas, cellSize } = this;
     const cs = cellSize;
-    const pegR = Math.max(cs * 0.28, 4);
+    const pegR = Math.max(cs * 0.30, 4);
 
+    // 1. Dark outer ring (label area)
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // 2. Light playing field, then overlays in order
+    this._drawBoardField();
     this._drawBorderZones();
+    this._drawGuideLines();
     this._drawGrid();
     this._drawLabels();
     this._drawLinks();
     this._drawNodes(pegR);
     // Offset peg preview drawn last so it appears on top of everything.
     if (this.dragCell) this._drawDragCallout(pegR);
+  }
+
+  /** Fill the inner playing area with the light board-field colour. */
+  private _drawBoardField(): void {
+    const { ctx, cellSize } = this;
+    const pad = cellSize * 0.5;
+    const [x0, y0] = this._toCanvas(pt(0, 0));
+    const [xN, yN] = this._toCanvas(pt(SIZE - 1, SIZE - 1));
+    ctx.fillStyle = COLORS.boardField;
+    ctx.fillRect(x0 - pad, y0 - pad, (xN - x0) + 2 * pad, (yN - y0) + 2 * pad);
+  }
+
+  /**
+   * Draw the Anbindungslinien (strategic guiding diagonals).
+   *
+   * These are the two board diagonals corner-to-corner.  They pass through the
+   * four strategically important intersection points I9/P16 and P9/I16, which
+   * mark the extreme reach of a connected chain toward each corner.  Drawn
+   * very faintly so they guide without distracting.
+   */
+  private _drawGuideLines(): void {
+    const { ctx } = this;
+    const [x0, y0] = this._toCanvas(pt(0, 0));
+    const [xN, yN] = this._toCanvas(pt(SIZE - 1, SIZE - 1));
+    ctx.save();
+    ctx.strokeStyle = COLORS.guideLine;
+    ctx.lineWidth   = 1.5;
+    ctx.lineCap     = 'round';
+    ctx.setLineDash([5, 7]);
+    // Main diagonal: top-left → bottom-right
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(xN, yN);
+    ctx.stroke();
+    // Anti-diagonal: top-right → bottom-left
+    ctx.beginPath();
+    ctx.moveTo(xN, y0);
+    ctx.lineTo(x0, yN);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private _drawLabels(): void {
@@ -336,7 +386,7 @@ export class BoardUI {
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.strokeStyle = color === BLACK ? COLORS.linkBlack : COLORS.linkWhite;
-      ctx.lineWidth   = Math.max(cs * 0.12, 2);
+      ctx.lineWidth   = Math.max(cs * 0.14, 2);
       ctx.lineCap     = 'round';
       ctx.stroke();
     }
@@ -370,8 +420,8 @@ export class BoardUI {
           ctx.lineWidth   = isLast ? Math.max(pegR * 0.35, 2) : 1;
           ctx.stroke();
         } else {
-          // Empty node
-          const r = pegR * 0.35;
+          // Empty node — slightly larger for good visibility on the light field
+          const r = pegR * 0.38;
           ctx.beginPath();
           ctx.arc(cx, cy, r, 0, 2 * Math.PI);
           ctx.fillStyle = isHover && this._isLegalForHuman(p)
