@@ -73,14 +73,37 @@ Full rules: https://en.wikipedia.org/wiki/TwixT
 
 ## Features
 
-- Neural-network AI powered by MCTS (Monte Carlo Tree Search) + ONNX Runtime
-- Fully offline after first load (Service Worker + PWA)
-- Works on iOS Safari, Android Chrome, and desktop browsers
-- Touch drag-to-preview peg placement
-- "AI move" hint button — delegate any move to the AI
-- Adjustable AI think time (5 s – 60 s)
-- Player vs Player mode for two humans on one screen
-- Installable as a home-screen app (no App Store required)
+### Game modes
+- **vs Computer** — play against a neural-network AI (MCTS + ONNX Runtime)
+- **vs Player** — two humans take turns on the same device
+
+### Gameplay
+- Tap or click any intersection to place a peg
+- **Touch drag-to-preview** — drag your finger to see where the peg will land, release to confirm
+- Bridges are drawn automatically whenever they are valid (no crossing rule enforced)
+- **Swap rule** — on the AI's opening move you can swap colours to equalise first-mover advantage
+- **"AI move" button** — delegate any of your turns to the AI for a hint or to autopilot a move
+- **Undo** — in vs-Computer mode undoes both your move and the AI's reply; in vs-Player undoes one move
+- **Adjustable AI think time** — 5 s / 10 s / 15 s / 25 s / 30 s / 45 s / 60 s (choice persisted across sessions)
+- **Win detection** with the winning bridge path highlighted in purple
+- **Draw detection** when no legal moves remain
+
+### Game import / export
+- **Export** the current game as a `.tsgf` file to your device
+- **LittleGolem explorer** — search for any LittleGolem player by name, browse their finished TwixT PP games, and open any game in the replay viewer
+- Fetch a specific LittleGolem game directly by entering its numeric game ID
+- **Download** any LittleGolem game as a `.tsgf` file
+- **Paste or upload** a `.tsgf` file from your device to replay it
+
+### Replay viewer
+- Step through any game move by move (⏮ ← → ⏭ buttons)
+- Keyboard navigation: arrow keys step one move, Home/End jump to start/end
+
+### PWA / platform
+- **Fully offline** after the first visit — Service Worker caches all app assets and the AI model
+- **Installable** on iOS, Android, and desktop — no App Store required; launches like a native app
+- Works on iOS Safari, Android Chrome, and all modern desktop browsers
+- **Automatic updates** — new versions activate silently while you are on the intro screen, without interrupting an active game
 
 ---
 
