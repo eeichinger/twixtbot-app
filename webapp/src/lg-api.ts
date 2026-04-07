@@ -75,6 +75,7 @@ const MOCK_PLAYERS: PlayerResult[] = [
 const MOCK_GAMES_BY_PLID: Record<string, GameSummary[]> = {
   '2674': [
     { id: '2546140', blackPlayer: '?', whitePlayer: '?', opponent: 'TwixtBot',          result: 'win',  boardSize: 24, moveCount: 31 },
+    { id: '2060663', blackPlayer: '?', whitePlayer: '?', opponent: 'TwixtBot',          result: 'lost', boardSize: 24, moveCount: 31 },
     { id: '2545876', blackPlayer: '?', whitePlayer: '?', opponent: 'Richard Malaschitz', result: 'lost', boardSize: 24, moveCount: 47 },
     { id: '2501234', blackPlayer: '?', whitePlayer: '?', opponent: 'Peyrol',             result: 'win',  boardSize: 24, moveCount: 38 },
     { id: '2498765', blackPlayer: '?', whitePlayer: '?', opponent: 'oakinger',           result: 'lost', boardSize: 24, moveCount: 52 },
@@ -89,6 +90,10 @@ const MOCK_GAMES_BY_PLID: Record<string, GameSummary[]> = {
     { id: '2531000', blackPlayer: '?', whitePlayer: '?', opponent: 'Richard Malaschitz', result: 'lost', boardSize: 24, moveCount: 37 },
   ],
 };
+
+// Real game from Little Golem: Alan Hensel (B) vs TwixtBot (W), game 2060663.
+// Uses LG's native b[..]/r[..] notation (r = Red = White).
+const MOCK_SGF_2060663 = `(;FF[4]EV[twixt]PB[Alan Hensel]PW[TwixtBot]SZ[24]SO[https://www.littlegolem.net];b[kg];r[ki];b[ii];r[jg];b[gh];r[ke];b[ei];r[fd];b[fc];r[in];b[po];r[km];b[mk];r[lk];b[qh];r[qk];b[tk];r[sl];b[ol];r[pm];b[nn];r[qf];b[og];r[oe];b[tf];r[sf];b[sd];r[rh];b[ui];r[vg];b[sh];r[resign])`;
 
 // A realistic ~30-move TwixT PP game in LG SGF format.
 const MOCK_SGF_2546140 = `(;GM[21]FF[4]SZ[24]RU[PP]PB[Alan Hensel]PW[twixtbot]RE[B+]
@@ -119,6 +124,7 @@ async function mockFetchPlayerGamesByPlid(plid: string): Promise<GameSummary[]> 
 async function mockFetchGame(id: string): Promise<ParsedGame> {
   await delay(500);
   if (id === '2546140') return parseTSGF(MOCK_SGF_2546140, id);
+  if (id === '2060663') return parseTSGF(MOCK_SGF_2060663, id);
   // Find game in any player list to get player names / result
   for (const games of Object.values(MOCK_GAMES_BY_PLID)) {
     const g = games.find(g => g.id === id);

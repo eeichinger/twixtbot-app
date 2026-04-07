@@ -120,6 +120,17 @@
             autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
           <button id="lg-search-btn">Search</button>
         </div>
+        <div id="lg-paste-section">
+          <div id="lg-paste-divider">— or paste / upload a .tsgf file —</div>
+          <textarea id="lg-paste-input" rows="3"
+            placeholder="(;FF[4]EV[twixt]PB[...]PW[...]SZ[24]…"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
+          <div id="lg-paste-btns">
+            <label id="lg-upload-label" for="lg-file-input">Upload file</label>
+            <input id="lg-file-input" type="file" accept=".tsgf,.sgf,.txt" />
+            <button id="lg-paste-replay-btn">Replay</button>
+          </div>
+        </div>
         <div id="lg-status">
           <div id="lg-empty-msg">Enter a player name or game&nbsp;ID</div>
           <div id="lg-loading-msg" class="hidden">

@@ -17,7 +17,7 @@ import {
   type GameMode,
 } from './game-mode.js';
 import { fetchGame, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
-import { formatResult, type ParsedGame } from './lg-sgf.js';
+import { parseTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
@@ -222,6 +222,8 @@ const $replayPrevBtn   = document.getElementById('replay-prev-btn')  as HTMLButt
 const $replayNextBtn   = document.getElementById('replay-next-btn')  as HTMLButtonElement;
 const $replayLastBtn   = document.getElementById('replay-last-btn')  as HTMLButtonElement;
 const replayCanvas     = document.getElementById('replay-canvas') as HTMLCanvasElement;
+const $lgPasteInput    = document.getElementById('lg-paste-input') as HTMLTextAreaElement;
+const $lgFileInput     = document.getElementById('lg-file-input') as HTMLInputElement;
 
 // -------------------------------------------------------------------------
 // State
@@ -762,6 +764,21 @@ async function openReplayById(id: string): Promise<void> {
   }
 }
 
+function openReplayFromText(text: string): void {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  try {
+    const parsed = parseTSGF(trimmed, 'custom');
+    if (parsed.moves.length === 0) {
+      lgSetState('error', 'No moves found — is this a valid .tsgf file?');
+      return;
+    }
+    openReplayForParsedGame(parsed);
+  } catch (err) {
+    lgHandleError('lg-paste-error', err);
+  }
+}
+
 function openReplayForParsedGame(parsed: ParsedGame): void {
   replayParsedGame = parsed;
   replayMoveIndex = parsed.moves.length; // start at final position
@@ -876,6 +893,22 @@ function init(): void {
   $lgSearchBtn.addEventListener('click', () => performLgSearch());
   $lgSearchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') performLgSearch();
+  });
+
+  // LG screen — paste / upload
+  document.getElementById('lg-paste-replay-btn')?.addEventListener('click', () => {
+    openReplayFromText($lgPasteInput.value);
+  });
+  $lgFileInput.addEventListener('change', () => {
+    const file = $lgFileInput.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      $lgPasteInput.value = reader.result as string;
+      openReplayFromText(reader.result as string);
+    };
+    reader.readAsText(file);
+    $lgFileInput.value = ''; // reset so the same file can be re-selected
   });
 
   // Replay screen — back and step controls

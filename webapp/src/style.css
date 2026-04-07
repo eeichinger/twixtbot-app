@@ -572,6 +572,73 @@ html, body {
 }
 .lg-card-back:hover { color: #5dade2; }
 
+/* Paste / upload section */
+#lg-paste-divider {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: rgba(100,160,220,0.3);
+  text-align: center;
+  padding: 4px 0;
+}
+
+#lg-paste-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: rgba(100,160,220,0.06);
+  border: 1px solid rgba(100,160,220,0.2);
+  border-radius: 2px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#lg-paste-input::placeholder { color: rgba(100,160,220,0.25); }
+#lg-paste-input:focus { border-color: rgba(100,160,220,0.5); }
+
+#lg-paste-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+#lg-upload-label {
+  flex: 1;
+  padding: 8px 0;
+  text-align: center;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 2px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#lg-upload-label:hover  { background: rgba(100,160,220,0.1); }
+#lg-upload-label:active { background: rgba(100,160,220,0.2); }
+
+#lg-file-input { display: none; }
+
+#lg-paste-replay-btn {
+  flex: 1;
+  padding: 8px 0;
+  background: transparent;
+  border: 1px solid rgba(100,160,220,0.4);
+  border-radius: 2px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#lg-paste-replay-btn:hover  { background: rgba(100,160,220,0.1); }
+#lg-paste-replay-btn:active { background: rgba(100,160,220,0.2); }
+
 /* -------------------------------------------------------------------------
    Replay viewer screen
    ------------------------------------------------------------------------- */

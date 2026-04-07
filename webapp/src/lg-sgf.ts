@@ -59,8 +59,8 @@ export function parseTSGF(text: string, id = ''): ParsedGame {
   const reMatch = text.match(/RE\[([^\]]*)\]/);
   if (reMatch) game.result = reMatch[1].trim();
 
-  // Parse moves: ;B[hd] or ;W[swap] or ;B[resign] or ;W[tt] (resign/pass sentinel)
-  const moveRegex = /;[BW]\[([^\]]*)\]/gi;
+  // Parse moves: ;B[hd] / ;W[hd] (standard SGF) or ;b[hd] / ;r[hd] (LG uses r for Red/White)
+  const moveRegex = /;[BWR]\[([^\]]*)\]/gi;
   let match;
   while ((match = moveRegex.exec(text)) !== null) {
     const raw = match[1].toLowerCase();
