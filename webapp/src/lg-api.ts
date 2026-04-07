@@ -18,7 +18,7 @@ import { parseTSGF, type ParsedGame } from './lg-sgf.js';
 // Mock mode — set to false to enable real LG requests
 // ---------------------------------------------------------------------------
 
-const MOCK_MODE = true;
+const MOCK_MODE = false;
 
 // ---------------------------------------------------------------------------
 // CORS proxy — change this constant to switch proxy implementations
