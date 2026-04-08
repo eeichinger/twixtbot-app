@@ -99,7 +99,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 10px;
   font-style: italic;
-  color: rgba(100,160,220,0.5);
+  color: rgba(100,160,220,0.75);
   letter-spacing: 1px;
   text-align: center;
   margin-bottom: 16px;
@@ -133,7 +133,7 @@ html, body {
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(100,160,220,0.4);
+  color: rgba(100,160,220,0.7);
   transition: background 0.15s, color 0.15s;
 }
 .mode-btn + .mode-btn { border-left: 1px solid rgba(100,160,220,0.3); }
@@ -163,13 +163,13 @@ html, body {
 .intro-attribution {
   font-family: 'Courier Prime', monospace;
   font-size: 8px;
-  color: rgba(100,160,220,0.3);
+  color: rgba(100,160,220,0.6);
   letter-spacing: 1px;
   text-align: center;
   line-height: 1.8;
 }
 .intro-attribution a {
-  color: rgba(100,160,220,0.4);
+  color: rgba(100,160,220,0.75);
   text-decoration: underline;
 }
 
@@ -223,7 +223,7 @@ html, body {
   font-size: 0.75rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(100,160,220,0.6);
+  color: rgba(100,160,220,0.8);
 }
 
 /* -------------------------------------------------------------------------
@@ -266,7 +266,7 @@ html, body {
 #status-bar button,
 #think-time-select {
   padding: 6px 14px;
-  border: 1px solid rgba(100,160,220,0.3);
+  border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
   background: transparent;
   color: #e8f4fd;
@@ -280,36 +280,9 @@ html, body {
 #think-time-select:hover { background: rgba(100,160,220,0.1); }
 #status-bar button:active { background: rgba(100,160,220,0.2); }
 #think-time-select {
-  padding-right: 6px;
-  appearance: none;
-  -webkit-appearance: none;
+  padding-right: 14px;
   color-scheme: dark;
 }
-
-/* Toolbar row below status bar (export button etc.) */
-#game-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  background: #0f1929;
-  border-bottom: 1px solid rgba(100,160,220,0.1);
-  flex-shrink: 0;
-}
-#game-toolbar button {
-  padding: 4px 10px;
-  border: 1px solid rgba(100,160,220,0.3);
-  border-radius: 2px;
-  background: transparent;
-  color: #e8f4fd;
-  font-family: 'Courier Prime', monospace;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-#game-toolbar button:hover  { background: rgba(100,160,220,0.1); }
-#game-toolbar button:active { background: rgba(100,160,220,0.2); }
 
 /* Footer */
 #game-footer {
@@ -317,19 +290,69 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
   padding: 4px 12px 6px;
+  border-top: 1px solid rgba(100,160,220,0.1);
 }
 
 #game-footer a {
   font-family: 'Courier Prime', monospace;
   font-size: 0.65rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.35);
+  color: rgba(100,160,220,0.65);
   text-decoration: none;
 }
 
-#game-footer a:hover { color: rgba(100,160,220,0.65); text-decoration: underline; }
+#game-footer a:hover { color: rgba(100,160,220,0.9); text-decoration: underline; }
+
+/* Shared footer version label (used across all screens) */
+.footer-version {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.65);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 4px;
+  white-space: nowrap;
+}
+.footer-version:hover { color: rgba(100,160,220,0.9); }
+
+/* Export button in the game footer */
+#game-footer #export-btn {
+  padding: 3px 10px;
+  border: 1px solid rgba(100,160,220,0.35);
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(100,160,220,0.7);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+#game-footer #export-btn:hover  { background: rgba(100,160,220,0.1); color: #e8f4fd; }
+#game-footer #export-btn:active { background: rgba(100,160,220,0.2); }
+
+/* Shared footer for LG and replay screens */
+.screen-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 12px 6px;
+  border-top: 1px solid rgba(100,160,220,0.1);
+}
+.screen-footer a {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.65);
+  text-decoration: none;
+}
+.screen-footer a:hover { color: rgba(100,160,220,0.9); text-decoration: underline; }
 
 /* Board area */
 #board-container {
@@ -408,7 +431,7 @@ html, body {
   width: 100%;
   padding: 9px 0;
   background: transparent;
-  color: rgba(100,160,220,0.55);
+  color: rgba(100,160,220,0.8);
   border: 1px solid rgba(100,160,220,0.2);
   border-radius: 2px;
   font-family: 'Courier Prime', monospace;
@@ -451,7 +474,7 @@ html, body {
 
 #lg-header button {
   padding: 6px 12px;
-  border: 1px solid rgba(100,160,220,0.3);
+  border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
   background: transparent;
   color: #e8f4fd;
@@ -535,7 +558,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.4);
+  color: rgba(100,160,220,0.65);
   text-align: center;
   padding: 24px 0;
 }
@@ -547,7 +570,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.6);
+  color: rgba(100,160,220,0.8);
 }
 
 #lg-error-msg {
@@ -586,9 +609,9 @@ html, body {
 .lg-save-btn {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid rgba(100,160,220,0.3);
+  border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
-  color: rgba(100,160,220,0.55);
+  color: rgba(100,160,220,0.8);
   font-size: 0.85rem;
   padding: 4px 8px;
   cursor: pointer;
@@ -609,7 +632,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.55);
+  color: rgba(100,160,220,0.75);
 }
 
 /* "← Players" back link above the game list */
@@ -617,7 +640,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.6);
+  color: rgba(100,160,220,0.85);
   padding: 6px 0 10px;
   cursor: pointer;
 }
@@ -628,7 +651,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
-  color: rgba(100,160,220,0.3);
+  color: rgba(100,160,220,0.6);
   text-align: center;
   padding: 4px 0;
 }
@@ -717,7 +740,7 @@ html, body {
 
 #replay-header button {
   padding: 6px 12px;
-  border: 1px solid rgba(100,160,220,0.3);
+  border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
   background: transparent;
   color: #e8f4fd;
@@ -769,7 +792,7 @@ html, body {
 
 #replay-controls button {
   padding: 8px 14px;
-  border: 1px solid rgba(100,160,220,0.3);
+  border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
   background: transparent;
   color: #e8f4fd;
@@ -787,7 +810,7 @@ html, body {
   font-family: 'Courier Prime', monospace;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
-  color: rgba(100,160,220,0.7);
+  color: rgba(100,160,220,0.9);
   min-width: 90px;
   text-align: center;
 }

@@ -23,7 +23,7 @@ import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sg
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-07-e';
+const APP_VERSION = '2026-04-08-a';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -75,8 +75,8 @@ function diagLog(event: string): void {
 }
 
 function diagInit(): void {
-  // Show version on both screens
-  for (const id of ['app-version', 'intro-version']) {
+  // Show version on all screens
+  for (const id of ['app-version', 'intro-version', 'lg-version', 'replay-version']) {
     const el = document.getElementById(id);
     if (el) el.textContent = `v${APP_VERSION}`;
   }
@@ -124,6 +124,8 @@ function diagInit(): void {
 
   setupVersionTap('app-version');
   setupVersionTap('intro-version');
+  setupVersionTap('lg-version');
+  setupVersionTap('replay-version');
 
   // Share button — opens native share sheet on iOS; falls back to clipboard elsewhere
   document.getElementById('diag-share-btn')?.addEventListener('click', async () => {
@@ -154,6 +156,12 @@ function diagInit(): void {
     const prev = document.getElementById('diag-log-prev');
     if (cur) cur.innerHTML = '';
     if (prev) prev.innerHTML = '';
+  });
+
+  // Close button — always reachable even when the overlay covers the version label
+  document.getElementById('diag-close-btn')?.addEventListener('click', () => {
+    const panel = document.getElementById('diag-panel');
+    if (panel) panel.style.display = 'none';
   });
 }
 
