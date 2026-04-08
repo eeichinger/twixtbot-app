@@ -70,8 +70,11 @@
       </div>
       <button id="start-btn">Start Game</button>
       <button id="lg-explore-btn">Browse Little Golem</button>
-      <p class="intro-attribution">Based on <a href="https://github.com/BonyJordan/twixtbot" target="_blank" rel="noopener">twixtbot</a> by Jordan Lampe &mdash;<br>MIT License</p>
-      <span id="intro-version" title="Tap 3× for diagnostics" style="position:absolute;bottom:12px;right:12px;font-size:0.7rem;color:rgba(100,160,220,0.4);cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
+      <p class="intro-attribution">Based on <a href="https://github.com/BonyJordan/twixtbot" target="_blank" rel="noopener">twixtbot</a> by Jordan Lampe &mdash; MIT License</p>
+      <footer class="screen-footer" style="width:100%;margin-top:auto">
+        <span id="intro-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+      </footer>
     </div>
 
     <!-- Loading screen (hidden; shown only if model not yet ready when Start is pressed) -->
@@ -91,17 +94,14 @@
         <button id="swap-btn" class="hidden" title="Swap sides: take the AI's first peg and play as White">Swap</button>
         <button id="new-game-btn"    title="Return to title screen">New</button>
       </header>
-      <div id="game-toolbar">
-        <button id="export-btn" title="Download game as .tsgf file">Export</button>
-      </div>
-
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
       </main>
 
       <footer id="game-footer">
-        <span id="app-version" title="Tap 3× for diagnostics" style="font-size:0.7rem;color:rgba(100,160,220,0.4);cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px"></span>
-        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">please report problems here</a>
+        <button id="export-btn" title="Download game as .tsgf file">Export</button>
+        <span id="app-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
       </footer>
 
       <!-- Overlay shown while AI is thinking -->
@@ -144,6 +144,10 @@
         </div>
         <div id="lg-results"></div>
       </div>
+      <footer class="screen-footer">
+        <span id="lg-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+      </footer>
     </div>
 
     <!-- Replay viewer screen -->
@@ -162,6 +166,10 @@
         <button id="replay-next-btn"  title="Next move">&#9654;</button>
         <button id="replay-last-btn"  title="Last move">&#9654;&#124;</button>
       </footer>
+      <footer class="screen-footer">
+        <span id="replay-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+      </footer>
     </div>
 
     <!-- Diagnostic log overlay — lives outside game-screen so it's reachable from any screen -->
@@ -171,6 +179,7 @@
         <div style="display:flex;gap:6px">
           <button id="diag-share-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Share</button>
           <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
+          <button id="diag-close-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 8px;cursor:pointer;font-size:11px">✕</button>
         </div>
       </div>
       <div id="diag-log-prev" style="color:#aaa;border-bottom:1px solid #444;margin-bottom:4px;padding-bottom:4px"></div>
