@@ -12,30 +12,76 @@ Explore & Replay feature (April 2026).
 ## Access Model
 
 - LG runs on `https://www.littlegolem.net`
-- **No login is required** for the endpoints described in this document
-- The SGF download endpoint and the public player/game list pages are all
-  accessible without authentication
+- **No login is required** for the public endpoints described in this document
+  (SGF download, player search, game list)
 - LG does **not** send CORS headers — browser `fetch()` is blocked by
   same-origin policy; a CORS proxy is required (see below)
+- Some endpoints (e.g. `player_game_list_txt.jsp`) require authentication —
+  see the Authentication section below
 
 ---
 
 ## CORS Proxy
 
 Since LG does not send `Access-Control-Allow-Origin` headers, a proxy is
-required for all browser requests. The current implementation uses
-`corsproxy.io` as a zero-infrastructure default:
+required for all browser requests. The deployed proxy is a Cloudflare Worker:
 
 ```
-https://corsproxy.io/?url=<url-encoded-LG-url>
+https://littlegolem-proxy.eeichinger.workers.dev/?url=<url-encoded-LG-url>
 ```
 
-Alternatives:
-- A thin Cloudflare Worker (recommended for production — no third-party trust)
-- Any other CORS proxy that forwards GET requests and passes through the
-  original response body and status code
+The worker supports both `GET` and `POST` requests and forwards:
+- `Content-Type` and `Cookie` request headers to LG
+- Request body (for POST)
+- All LG response headers back to the client, including `Set-Cookie`
 
 The proxy is configured via a single constant `PROXY_PREFIX` in `lg-api.ts`.
+
+---
+
+## Authentication
+
+### Login endpoint
+
+```
+POST https://www.littlegolem.net/jsp/login/index.jsp
+Content-Type: application/x-www-form-urlencoded
+
+login=<username>&password=<password>
+```
+
+Verified working via the Cloudflare Worker proxy (April 2026).
+
+### Session cookies
+
+A successful login response sets **two cookies** that must be stored and
+replayed in the `Cookie` header on all subsequent authenticated requests:
+
+| Cookie | Example value | Scope | Notes |
+|---|---|---|---|
+| `JSESSIONID` | `oymte7pz9h3ti2rf0soc34d` | Session | J2EE session identifier; no expiry → lost on browser close |
+| `login2` | `oakinger#-721315398` | 30 days | Persistent "remember me" token; format is `username#hash` |
+
+Example response headers from a successful login:
+```
+set-cookie: JSESSIONID=oymte7pz9h3ti2rf0soc34d;Path=/
+set-cookie: login2=oakinger#-721315398;Path=/;Expires=Fri, 08-May-2026 02:46:06 GMT
+```
+
+The response body is HTML (the logged-in home page). Success can be detected
+by the presence of both `Set-Cookie` headers in the response.
+
+### Using cookies in follow-up requests
+
+Pass both cookies in a single `Cookie` header:
+
+```
+Cookie: JSESSIONID=<value>; login2=<value>
+```
+
+The Cloudflare Worker already forwards the `Cookie` header from the incoming
+request to LG, so once the app stores the cookies from the login response,
+it can pass them through the proxy for all subsequent requests.
 
 ---
 
@@ -45,11 +91,13 @@ All paths are relative to `https://www.littlegolem.net`.
 
 | Purpose | URL | Auth | Notes |
 |---|---|---|---|
+| Login | `/jsp/login/index.jsp` | — | POST with `login=`+`password=`; sets `JSESSIONID` + `login2` cookies |
 | Player search | `/jsp/info/player_list.jsp?gtvar=twixt_DEFAULT&filter=NAME` | None | Filters to TwixT players matching NAME |
 | Player profile | `/jsp/info/player.jsp?plid=PLID` | None | Stats page; links to game list |
 | Player game list | `/jsp/info/player_game_list.jsp?gtid=twixt&plid=PLID` | None | All finished TwixT games for a player |
 | Game detail page | `/jsp/game/game.jsp?gid=GID` | None | Web UI for a single game |
 | SGF download | `/servlet/sgf/GID/gameGID.tsgf` | None | Raw SGF file; publicly accessible |
+| Game list (text export) | `/jsp/info/player_game_list_txt.jsp?gtid=twixt&plid=PLID` | Required | Plain-text export; requires login cookies |
 
 ### Query parameters
 
@@ -337,9 +385,10 @@ interface ParsedGame {
   `twixt`, not `twixt.PP`. Using `twixt.PP` silently returns no results on
   `player_game_list.jsp`.
 
-- **`player_game_list_txt.jsp` not public**: The plain-text export endpoint
-  (`_txt.jsp`) does not appear to be accessible without login. Always use the
-  HTML endpoint.
+- **`player_game_list_txt.jsp` requires login**: The plain-text export endpoint
+  (`_txt.jsp`) is not publicly accessible. It requires `JSESSIONID` + `login2`
+  cookies (see Authentication section). Use the HTML endpoint for unauthenticated
+  access; use `_txt.jsp` if the app has an active login session.
 
 - **Ongoing games**: The game list page includes ongoing games (no `RE`
   property or `RE[?]` in their SGF). The SGF for an ongoing game may be
