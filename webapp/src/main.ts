@@ -23,7 +23,7 @@ import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sg
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-08-b';
+const APP_VERSION = '2026-04-08-c';
 
 // -------------------------------------------------------------------------
 // Constants
