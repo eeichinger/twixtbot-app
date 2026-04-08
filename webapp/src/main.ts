@@ -23,7 +23,7 @@ import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sg
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-08-c';
+const APP_VERSION = '2026-04-08-d';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -315,7 +315,12 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       onReady();
     } else if (msg.type === 'result') {
       const moveStr = msg.move === 'swap' ? 'swap' : `x=${(msg.move as {x:number,y:number}).x} y=${(msg.move as {x:number,y:number}).y}`;
-      diagLog(`worker-result ${moveStr}`);
+      if (msg.trials != null) {
+        const qSign = (msg.topQ as number) >= 0 ? '+' : '';
+        diagLog(`worker-result ${moveStr} | trials=${msg.trials} topPct=${(msg.topPct as number).toFixed(1)}% topQ=${qSign}${(msg.topQ as number).toFixed(3)} elapsed=${msg.elapsed}ms [budget=${msg.timeLimitMs}ms cap=${msg.maxTrials} temp=${msg.temperature}]`);
+      } else {
+        diagLog(`worker-result ${moveStr}`);
+      }
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
     } else if (msg.type === 'computing-done') {

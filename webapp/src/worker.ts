@@ -187,11 +187,27 @@ self.onmessage = async (e: MessageEvent) => {
       // Heartbeat: every 2s send a ping to main thread so it can confirm
       // the worker is still alive. Pings stop when MCTS finishes or is killed.
       let pingCount = 0;
-      const pingStart = Date.now();
+      const moveStart = Date.now();
       const pingId = setInterval(() => {
         pingCount++;
-        self.postMessage({ type: 'ping', elapsed: Date.now() - pingStart, iterations: pingCount });
+        self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, iterations: pingCount });
       }, 2000);
+
+      /** Summarise visit-count distribution for diagnostics.
+       *  trials    = total MCTS visits at root
+       *  topPct    = % of visits on the most-visited move (search concentration)
+       *  topQ      = Q of that move from the bot's perspective (-1 loss … +1 win)
+       */
+      function gatherStats(scores: Float64Array): { trials: number; topPct: number; topQ: number } {
+        let trials = 0, topN = 0, topIdx = 0;
+        for (let i = 0; i < scores.length; i++) {
+          trials += scores[i];
+          if (scores[i] > topN) { topN = scores[i]; topIdx = i; }
+        }
+        const topPct = trials > 0 ? (topN / trials) * 100 : 0;
+        const topQ   = mcts?.root ? mcts.root.Q[topIdx] : 0;
+        return { trials, topPct, topQ };
+      }
 
       // Hard-deadline timer: fires between await yields if the internal
       // Date.now() check somehow doesn't stop the loop in time.
@@ -208,7 +224,9 @@ self.onmessage = async (e: MessageEvent) => {
           if (totalN === 0 && root.lmNonzero) {
             for (const i of root.lmNonzero) scores[i] = root.P[i];
           }
-          self.postMessage({ type: 'result', move: pickMoveWithTemperature(scores, turn, temperature) });
+          const stats = gatherStats(scores);
+          const elapsed = Date.now() - moveStart;
+          self.postMessage({ type: 'result', move: pickMoveWithTemperature(scores, turn, temperature), ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {
           // Root not yet expanded — pick any legal move
           const legal = game.legalPlays();
@@ -218,7 +236,6 @@ self.onmessage = async (e: MessageEvent) => {
       }, timeLimitMs);
 
       let result: Float64Array | { x: number; y: number } | null = null;
-      const moveStart = Date.now();
       try {
         result = await mcts.mcts(game, maxTrials, timeLimitMs) as Float64Array | { x: number; y: number };
       } finally {
@@ -234,13 +251,17 @@ self.onmessage = async (e: MessageEvent) => {
 
       if (!resultSent && result !== null) {
         resultSent = true;
+        const elapsed = Date.now() - moveStart;
         let moveMsg: MoveMsg;
         if (result instanceof Float64Array) {
+          const stats = gatherStats(result);
           moveMsg = pickMoveWithTemperature(result, turn, temperature);
+          self.postMessage({ type: 'result', move: moveMsg, ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {
+          // Proven forced move — no MCTS stats available
           moveMsg = { x: (result as {x:number,y:number}).x, y: (result as {x:number,y:number}).y };
+          self.postMessage({ type: 'result', move: moveMsg });
         }
-        self.postMessage({ type: 'result', move: moveMsg });
       }
     } catch (err) {
       self.postMessage({ type: 'error', message: String(err) });
