@@ -201,7 +201,7 @@ export class BoardUI {
       e.preventDefault();
       if (!this.enabled || !this.game) return;
       const t = e.changedTouches[0];
-      this.dragCell = this._snapToLegal(t.clientX, t.clientY, -Math.max(this.cellSize * 2, 65));
+      this.dragCell = this._snapToLegal(t.clientX, t.clientY, -Math.max(this.cellSize * 2, 49));
       this.render();
     }, { passive: false });
 
