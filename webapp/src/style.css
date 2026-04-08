@@ -263,26 +263,52 @@ html, body {
   color: #e8f4fd;
 }
 
-#status-bar button,
-#think-time-select {
-  padding: 6px 14px;
+/* New/back button in game header — matches LG/replay back button style */
+#new-game-btn {
+  padding: 6px 12px;
   border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
   background: transparent;
   color: #e8f4fd;
   font-family: 'Courier Prime', monospace;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#new-game-btn:hover  { background: rgba(100,160,220,0.1); }
+#new-game-btn:active { background: rgba(100,160,220,0.2); }
+
+/* Bottom control bar — mirrors #replay-controls layout */
+#game-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #0f1929;
+  border-top: 1px solid rgba(100,160,220,0.2);
+  flex-shrink: 0;
+}
+
+#game-controls button,
+#game-controls #think-time-select {
+  padding: 8px 14px;
+  border: 1px solid rgba(100,160,220,0.45);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.15s;
 }
-#status-bar button:hover,
-#think-time-select:hover { background: rgba(100,160,220,0.1); }
-#status-bar button:active { background: rgba(100,160,220,0.2); }
-#think-time-select {
-  padding-right: 14px;
-  color-scheme: dark;
-}
+#game-controls button:hover,
+#game-controls #think-time-select:hover { background: rgba(100,160,220,0.1); }
+#game-controls button:active            { background: rgba(100,160,220,0.2); }
+#game-controls #think-time-select       { color-scheme: dark; }
+
+/* Push swap to the far right so hiding it doesn't shift other buttons */
+#swap-btn { margin-left: auto; }
 
 /* Footer */
 #game-footer {
@@ -318,22 +344,6 @@ html, body {
   white-space: nowrap;
 }
 .footer-version:hover { color: rgba(100,160,220,0.9); }
-
-/* Export button in the game footer */
-#game-footer #export-btn {
-  padding: 3px 10px;
-  border: 1px solid rgba(100,160,220,0.35);
-  border-radius: 2px;
-  background: transparent;
-  color: rgba(100,160,220,0.7);
-  font-family: 'Courier Prime', monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-#game-footer #export-btn:hover  { background: rgba(100,160,220,0.1); color: #e8f4fd; }
-#game-footer #export-btn:active { background: rgba(100,160,220,0.2); }
 
 /* Shared footer for LG and replay screens */
 .screen-footer {
