@@ -291,7 +291,8 @@ html, body {
 }
 
 #game-controls button,
-#game-controls #think-time-select {
+#game-controls #think-time-select,
+#game-controls #strength-select {
   padding: 8px 14px;
   border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
@@ -303,9 +304,11 @@ html, body {
   transition: background 0.15s;
 }
 #game-controls button:hover,
-#game-controls #think-time-select:hover { background: rgba(100,160,220,0.1); }
+#game-controls #think-time-select:hover,
+#game-controls #strength-select:hover   { background: rgba(100,160,220,0.1); }
 #game-controls button:active            { background: rgba(100,160,220,0.2); }
-#game-controls #think-time-select       { color-scheme: dark; }
+#game-controls #think-time-select,
+#game-controls #strength-select         { color-scheme: dark; }
 
 /* Push swap to the far right so hiding it doesn't shift other buttons */
 #swap-btn { margin-left: auto; }
