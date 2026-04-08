@@ -2,8 +2,8 @@
  * worker.ts — Web Worker that runs MCTS + ONNX inference off the main thread.
  *
  * Message protocol (main → worker):
- *   { type: 'init',  modelUrl: string, trials?: number }
- *   { type: 'move',  history: MoveMsg[], trials?: number }
+ *   { type: 'init',  modelUrl: string, timeLimitMs?: number, maxTrials?: number, temperature?: number }
+ *   { type: 'move',  history: MoveMsg[], timeLimitMs?: number, maxTrials?: number, temperature?: number }
  *   { type: 'abort' }
  *
  * Message protocol (worker → main):
@@ -32,11 +32,11 @@ function fromMoveRecord(m: MoveRecord): MoveMsg {
   return { x: m.x, y: m.y };
 }
 
-const MAX_TRIALS = 100_000;  // effectively unlimited; time limit is the real constraint
-
 let player: OnnxPlayer | null = null;
 let mcts:   NeuralMCTS | null = null;
 let defaultTimeLimitMs = 10_000;
+let defaultMaxTrials   = 100_000;  // effectively unlimited; time limit is the real constraint
+let defaultTemperature = 0;        // 0 = argmax (strongest); >0 = temperature sampling (weaker)
 let isProcessing = false;
 
 self.onmessage = async (e: MessageEvent) => {
@@ -46,7 +46,9 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       player = new OnnxPlayer();
       await player.load(msg.modelUrl);
-      if (msg.timeLimitMs) defaultTimeLimitMs = msg.timeLimitMs;
+      if (msg.timeLimitMs  != null) defaultTimeLimitMs = msg.timeLimitMs;
+      if (msg.maxTrials   != null) defaultMaxTrials   = msg.maxTrials;
+      if (msg.temperature != null) defaultTemperature = msg.temperature;
 
       mcts = new NeuralMCTS(
         (game) => player!.eval(game),
@@ -71,19 +73,65 @@ self.onmessage = async (e: MessageEvent) => {
     isProcessing = true;
     const { policyIndexToPoint } = await import('./naf.js');
 
-    /** Pick the best move from a Float64Array of scores (visit counts or priors). */
-    function pickBestMove(scores: Float64Array, turn: number): MoveMsg {
-      let bestIdx = 0;
-      for (let i = 1; i < scores.length; i++) {
-        if (scores[i] > scores[bestIdx]) bestIdx = i;
+    /**
+     * Pick a move from a Float64Array of scores (visit counts or priors).
+     *
+     * temperature=0  → argmax (deterministic best move)
+     * temperature>0  → sample proportional to scores^(1/temperature);
+     *                  higher values flatten the distribution → weaker play
+     */
+    function pickMoveWithTemperature(scores: Float64Array, turn: number, temperature: number): MoveMsg {
+      if (temperature === 0) {
+        let bestIdx = 0;
+        for (let i = 1; i < scores.length; i++) {
+          if (scores[i] > scores[bestIdx]) bestIdx = i;
+        }
+        const move = policyIndexToPoint(turn, bestIdx);
+        return { x: move.x, y: move.y };
       }
-      const move = policyIndexToPoint(turn, bestIdx);
+      // Build weights = scores^(1/T), then sample
+      const inv = 1 / temperature;
+      const weights = new Float64Array(scores.length);
+      let sum = 0;
+      for (let i = 0; i < scores.length; i++) {
+        if (scores[i] > 0) {
+          weights[i] = Math.pow(scores[i], inv);
+          sum += weights[i];
+        }
+      }
+      if (sum === 0) {
+        // No MCTS visits yet — fall back to argmax on raw scores
+        let bestIdx = 0;
+        for (let i = 1; i < scores.length; i++) {
+          if (scores[i] > scores[bestIdx]) bestIdx = i;
+        }
+        const move = policyIndexToPoint(turn, bestIdx);
+        return { x: move.x, y: move.y };
+      }
+      let r = Math.random() * sum;
+      for (let i = 0; i < weights.length; i++) {
+        r -= weights[i];
+        if (r <= 0) {
+          const move = policyIndexToPoint(turn, i);
+          return { x: move.x, y: move.y };
+        }
+      }
+      // Floating-point rounding fallback: return last nonzero weight
+      for (let i = weights.length - 1; i >= 0; i--) {
+        if (weights[i] > 0) {
+          const move = policyIndexToPoint(turn, i);
+          return { x: move.x, y: move.y };
+        }
+      }
+      const move = policyIndexToPoint(turn, 0);
       return { x: move.x, y: move.y };
     }
 
     try {
       const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
-      const timeLimitMs: number = msg.timeLimitMs ?? defaultTimeLimitMs;
+      const timeLimitMs: number  = msg.timeLimitMs  ?? defaultTimeLimitMs;
+      const maxTrials:   number  = msg.maxTrials    ?? defaultMaxTrials;
+      const temperature: number  = msg.temperature  ?? defaultTemperature;
       const game = replayHistory(history);
       const turn = game.turn;
 
@@ -160,7 +208,7 @@ self.onmessage = async (e: MessageEvent) => {
           if (totalN === 0 && root.lmNonzero) {
             for (const i of root.lmNonzero) scores[i] = root.P[i];
           }
-          self.postMessage({ type: 'result', move: pickBestMove(scores, turn) });
+          self.postMessage({ type: 'result', move: pickMoveWithTemperature(scores, turn, temperature) });
         } else {
           // Root not yet expanded — pick any legal move
           const legal = game.legalPlays();
@@ -172,7 +220,7 @@ self.onmessage = async (e: MessageEvent) => {
       let result: Float64Array | { x: number; y: number } | null = null;
       const moveStart = Date.now();
       try {
-        result = await mcts.mcts(game, MAX_TRIALS, timeLimitMs) as Float64Array | { x: number; y: number };
+        result = await mcts.mcts(game, maxTrials, timeLimitMs) as Float64Array | { x: number; y: number };
       } finally {
         // Always cancel the timers — whether mcts returned normally,
         // threw, or was interrupted.
@@ -188,7 +236,7 @@ self.onmessage = async (e: MessageEvent) => {
         resultSent = true;
         let moveMsg: MoveMsg;
         if (result instanceof Float64Array) {
-          moveMsg = pickBestMove(result, turn);
+          moveMsg = pickMoveWithTemperature(result, turn, temperature);
         } else {
           moveMsg = { x: (result as {x:number,y:number}).x, y: (result as {x:number,y:number}).y };
         }
