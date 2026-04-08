@@ -62,3 +62,19 @@ jobs:
           curl -v -k --max-time 15 \
             "https://www.littlegolem.net/servlet/sgf/2546140/game2546140.tsgf" \
             2>&1 || true
+
+      - name: curl — direct login to LG
+        run: |
+          echo "=== curl: direct LG login ==="
+          curl -v --max-time 15 -L \
+            -X POST "https://www.littlegolem.net/jsp/login/index.jsp" \
+            -d "login=oakinger&password=vupysoka" \
+            2>&1 || true
+
+      - name: curl — login via Cloudflare worker
+        run: |
+          echo "=== curl: login via worker ==="
+          curl -v --max-time 15 -L \
+            -X POST "https://littlegolem-proxy.eeichinger.workers.dev/?url=https%3A%2F%2Fwww.littlegolem.net%2Fjsp%2Flogin%2Findex.jsp" \
+            -d "login=oakinger&password=vupysoka" \
+            2>&1 || true
