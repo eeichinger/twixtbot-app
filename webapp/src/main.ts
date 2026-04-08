@@ -23,7 +23,7 @@ import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sg
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-08-a';
+const APP_VERSION = '2026-04-08-b';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -31,13 +31,34 @@ const APP_VERSION = '2026-04-08-a';
 
 const MODEL_URL   = import.meta.env.BASE_URL + 'model.onnx';
 
-const THINK_TIME_OPTIONS = [5, 10, 15, 25, 30, 45, 60];  // seconds
+const THINK_TIME_OPTIONS = [2, 5, 10, 15, 25, 30, 45, 60];  // seconds
 const THINK_TIME_KEY     = 'twixt-think-time-sec';
-const DEFAULT_THINK_TIME = 10;
+const DEFAULT_THINK_TIME = 5;
 
 function getThinkTimeSec(): number {
   const stored = parseInt(localStorage.getItem(THINK_TIME_KEY) ?? '', 10);
   return THINK_TIME_OPTIONS.includes(stored) ? stored : DEFAULT_THINK_TIME;
+}
+
+interface BotStrengthOption {
+  id: string;
+  label: string;
+  maxTrials: number;
+  temperature: number;
+}
+
+const BOT_STRENGTH_OPTIONS: BotStrengthOption[] = [
+  { id: 'beginner', label: 'Beginner', maxTrials:     50, temperature: 2.0 },
+  { id: 'club',     label: 'Club',     maxTrials:    500, temperature: 0.5 },
+  { id: 'master',   label: 'Master',   maxTrials: 100_000, temperature: 0   },
+];
+const BOT_STRENGTH_KEY     = 'twixt-bot-strength';
+const DEFAULT_BOT_STRENGTH = 'beginner';
+
+function getBotStrength(): BotStrengthOption {
+  const stored = localStorage.getItem(BOT_STRENGTH_KEY);
+  return BOT_STRENGTH_OPTIONS.find(o => o.id === stored)
+      ?? BOT_STRENGTH_OPTIONS.find(o => o.id === DEFAULT_BOT_STRENGTH)!;
 }
 
 // -------------------------------------------------------------------------
@@ -211,6 +232,7 @@ const $undoBtn         = document.getElementById('undo-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
+const $strengthSelect  = document.getElementById('strength-select')  as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
 
 // LG Explore screen
@@ -258,11 +280,13 @@ let gameMode: GameMode = loadGameMode();
 // UI helpers
 // -------------------------------------------------------------------------
 
-/** Show/hide the think-time selector: always in PvC; in PvP only when the AI-move button is live. */
+/** Show/hide the think-time and strength selectors. */
 function syncThinkTimeVisibility(): void {
-  const show = gameMode === 'pvc' ||
+  const showThinkTime = gameMode === 'pvc' ||
     (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
-  $thinkTimeSelect.classList.toggle('hidden', !show);
+  $thinkTimeSelect.classList.toggle('hidden', !showThinkTime);
+  // Strength only applies to PvC
+  $strengthSelect.classList.toggle('hidden', gameMode !== 'pvc');
 }
 
 /** Show the "AI move" button only when a human can meaningfully delegate their turn. */
@@ -326,7 +350,8 @@ function initWorker(onReady: () => void = onWorkerReady): void {
   };
 
   $loadingMsg.textContent = 'Loading AI model…';
-  worker.postMessage({ type: 'init', modelUrl: MODEL_URL, timeLimitMs: getThinkTimeSec() * 1000 });
+  const initStrength = getBotStrength();
+  worker.postMessage({ type: 'init', modelUrl: MODEL_URL, timeLimitMs: getThinkTimeSec() * 1000, maxTrials: initStrength.maxTrials, temperature: initStrength.temperature });
 }
 
 function clearAiMoveTimer(): void {
@@ -356,25 +381,27 @@ function requestAiMove(): void {
   setThinking(true);
   stopHeartbeat();  // not needed while AI is thinking
 
-  const timeSec = getThinkTimeSec();
+  const timeSec  = getThinkTimeSec();
+  const strength = getBotStrength();
   const watchdogMs = (timeSec + 15) * 1000;
 
   clearAiMoveTimer();
   aiMoveTimer = setTimeout(onAiMoveTimeout, watchdogMs);
-  diagLog(`request-ai-move timeSec=${timeSec} watchdog=${watchdogMs}ms`);
+  diagLog(`request-ai-move timeSec=${timeSec} strength=${strength.id} watchdog=${watchdogMs}ms`);
 
   const history: MoveMsg[] = game.history.map(m =>
     m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
   );
+  const moveMsg = { type: 'move', history, timeLimitMs: timeSec * 1000, maxTrials: strength.maxTrials, temperature: strength.temperature };
 
   if (workerAlive) {
-    worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
+    worker.postMessage(moveMsg);
   } else {
     // Worker was terminated (after watchdog or mid-move "New Game").
     diagLog('worker-restarting-for-move');
     initWorker(() => {
       diagLog('worker-ready-sending-move');
-      worker.postMessage({ type: 'move', history, timeLimitMs: timeSec * 1000 });
+      worker.postMessage(moveMsg);
     });
   }
 }
@@ -957,6 +984,18 @@ function init(): void {
   }
   $thinkTimeSelect.addEventListener('change', () => {
     localStorage.setItem(THINK_TIME_KEY, $thinkTimeSelect.value);
+  });
+
+  const savedStrength = getBotStrength();
+  for (const s of BOT_STRENGTH_OPTIONS) {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.label;
+    if (s.id === savedStrength.id) opt.selected = true;
+    $strengthSelect.appendChild(opt);
+  }
+  $strengthSelect.addEventListener('change', () => {
+    localStorage.setItem(BOT_STRENGTH_KEY, $strengthSelect.value);
   });
 
   $hintBtn.addEventListener('click',    onHintClick);
