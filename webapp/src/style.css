@@ -315,8 +315,7 @@ html, body {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   padding: 4px 12px 6px;
   border-top: 1px solid rgba(100,160,220,0.1);
 }
@@ -331,8 +330,9 @@ html, body {
 
 #game-footer a:hover { color: rgba(100,160,220,0.9); text-decoration: underline; }
 
-/* Shared footer version label (used across all screens) */
+/* Shared footer version label (used across all screens) — anchors to the left */
 .footer-version {
+  flex: 1;
   font-family: 'Courier Prime', monospace;
   font-size: 0.65rem;
   letter-spacing: 0.05em;
@@ -345,13 +345,24 @@ html, body {
 }
 .footer-version:hover { color: rgba(100,160,220,0.9); }
 
+/* MIT License label — anchors to the right */
+.footer-license {
+  flex: 1;
+  text-align: right;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  color: rgba(100,160,220,0.45);
+  white-space: nowrap;
+  padding: 4px;
+}
+
 /* Shared footer for LG and replay screens */
 .screen-footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   padding: 4px 12px 6px;
   border-top: 1px solid rgba(100,160,220,0.1);
 }
