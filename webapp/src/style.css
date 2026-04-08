@@ -310,8 +310,26 @@ html, body {
 #game-controls #think-time-select,
 #game-controls #strength-select         { color-scheme: dark; }
 
-/* Push swap to the far right so hiding it doesn't shift other buttons */
-#swap-btn { margin-left: auto; }
+/* Swap button: floating pill overlaid at the bottom of the board */
+#swap-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 10px 22px;
+  background: rgba(15, 25, 41, 0.82);
+  border: 1px solid rgba(100,160,220,0.6);
+  border-radius: 20px;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.9rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s;
+}
+#swap-btn:hover  { background: rgba(100,160,220,0.18); }
+#swap-btn:active { background: rgba(100,160,220,0.32); }
 
 /* Footer */
 #game-footer {
