@@ -285,8 +285,7 @@ function syncThinkTimeVisibility(): void {
   const showThinkTime = gameMode === 'pvc' ||
     (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
   $thinkTimeSelect.classList.toggle('hidden', !showThinkTime);
-  // Strength only applies to PvC
-  $strengthSelect.classList.toggle('hidden', gameMode !== 'pvc');
+  $strengthSelect.classList.toggle('hidden', !showThinkTime);
 }
 
 /** Show the "AI move" button only when a human can meaningfully delegate their turn. */
