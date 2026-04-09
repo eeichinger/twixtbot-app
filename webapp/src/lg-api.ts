@@ -58,6 +58,32 @@ export interface GameSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Client-side filters (L10 + L11)
+// ---------------------------------------------------------------------------
+
+export type ResultFilter = 'all' | 'win' | 'lost' | 'draw';
+
+/**
+ * Filter a GameSummary array by result and/or opponent.
+ * Both filters are combinable and operate purely on the already-fetched list.
+ *
+ * @param games    The full list to filter.
+ * @param result   'all' disables the result filter.
+ * @param opponent null or empty string disables the opponent filter.
+ */
+export function filterGameSummaries(
+  games: GameSummary[],
+  result: ResultFilter,
+  opponent: string | null,
+): GameSummary[] {
+  return games.filter(g => {
+    if (result !== 'all' && g.result !== result) return false;
+    if (opponent && g.opponent !== opponent) return false;
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Mock data
 // ---------------------------------------------------------------------------
 

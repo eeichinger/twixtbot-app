@@ -16,7 +16,7 @@ import {
   isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle,
   type GameMode,
 } from './game-mode.js';
-import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
+import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, filterGameSummaries, type GameSummary, type PlayerResult, type ResultFilter } from './lg-api.js';
 import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
@@ -743,6 +743,13 @@ let replayMoveIndex = 0;
 /** Cached player search results for instant back-navigation without re-fetch. */
 let lastPlayerResults: PlayerResult[] = [];
 
+/** Full unfiltered game list for the current player (populated by openPlayerGames). */
+let allLoadedGames: GameSummary[] = [];
+/** Active result filter (L10). */
+let activeResultFilter: ResultFilter = 'all';
+/** Active opponent filter (L11); null = any. */
+let activeOpponentFilter: string | null = null;
+
 /** All screens that must be hidden when switching between them. */
 function hideAllScreens(): void {
   $introScreen.classList.add('hidden');
@@ -829,22 +836,38 @@ function renderPlayerResults(players: PlayerResult[]): void {
 
 // ---- Game result cards --------------------------------------------------
 
-function renderGameResults(games: GameSummary[]): void {
-  $lgResults.innerHTML = '';
-  if (games.length === 0) {
-    lgSetState('error', 'No finished TwixT PP games found for this player.');
-    return;
+/** Re-render the game cards below the filter bar using current active filters. */
+function applyGameFilters(): void {
+  const filtered = filterGameSummaries(allLoadedGames, activeResultFilter, activeOpponentFilter);
+
+  // Remove existing game cards (everything after .lg-filter-bar)
+  const filterBar = $lgResults.querySelector('.lg-filter-bar');
+  let el = filterBar ? filterBar.nextElementSibling : null;
+  while (el) {
+    const next = el.nextElementSibling;
+    $lgResults.removeChild(el);
+    el = next;
   }
-  lgSetState('results');
 
-  // "← Players" back link restores cached player search results instantly
-  const backEl = document.createElement('div');
-  backEl.className = 'lg-card-back';
-  backEl.textContent = '← Players';
-  backEl.addEventListener('click', () => renderPlayerResults(lastPlayerResults));
-  $lgResults.appendChild(backEl);
+  // Update chip active states and counts
+  const counts: Record<string, number> = { all: allLoadedGames.length, win: 0, lost: 0, draw: 0 };
+  for (const g of allLoadedGames) {
+    if (g.result === 'win' || g.result === 'lost' || g.result === 'draw') counts[g.result]++;
+  }
+  $lgResults.querySelectorAll<HTMLButtonElement>('.lg-chip').forEach(btn => {
+    const f = btn.dataset.filter as ResultFilter;
+    btn.classList.toggle('active', f === activeResultFilter);
+    btn.textContent = f === 'all' ? `All (${counts.all})`
+                    : f === 'win' ? `Win (${counts.win})`
+                    : f === 'lost' ? `Loss (${counts.lost})`
+                    : `Draw (${counts.draw})`;
+  });
 
-  for (const g of games) {
+  // Update opponent select value
+  const sel = $lgResults.querySelector<HTMLSelectElement>('.lg-opponent-select');
+  if (sel) sel.value = activeOpponentFilter ?? '';
+
+  for (const g of filtered) {
     const line1 = g.opponent ? `vs ${g.opponent}` : `${g.blackPlayer} (B) vs ${g.whitePlayer} (W)`;
     const movePart = g.moveCount > 0 ? `${g.moveCount} moves  ·  ` : '';
     const line2 = `#${g.id}  ·  ${movePart}${formatResult(g.result)}`;
@@ -857,6 +880,76 @@ function renderGameResults(games: GameSummary[]): void {
     card.appendChild(saveBtn);
     $lgResults.appendChild(card);
   }
+}
+
+function renderGameResults(games: GameSummary[]): void {
+  allLoadedGames = games;
+  activeResultFilter = 'all';
+  activeOpponentFilter = null;
+
+  $lgResults.innerHTML = '';
+  if (games.length === 0) {
+    lgSetState('error', 'No finished TwixT PP games found for this player.');
+    return;
+  }
+  lgSetState('results');
+
+  // "← Players" back link
+  const backEl = document.createElement('div');
+  backEl.className = 'lg-card-back';
+  backEl.textContent = '← Players';
+  backEl.addEventListener('click', () => renderPlayerResults(lastPlayerResults));
+  $lgResults.appendChild(backEl);
+
+  // Filter bar (L10 + L11)
+  const filterBar = document.createElement('div');
+  filterBar.className = 'lg-filter-bar';
+
+  // Result chips (L10)
+  const chipRow = document.createElement('div');
+  chipRow.className = 'lg-chip-row';
+  for (const f of ['all', 'win', 'lost', 'draw'] as ResultFilter[]) {
+    const btn = document.createElement('button');
+    btn.className = 'lg-chip';
+    btn.dataset.filter = f;
+    btn.addEventListener('click', () => {
+      activeResultFilter = f;
+      applyGameFilters();
+    });
+    chipRow.appendChild(btn);
+  }
+  filterBar.appendChild(chipRow);
+
+  // Opponent dropdown (L11) — hidden when fewer than 2 distinct opponents
+  const opponents = [...new Set(games.map(g => g.opponent).filter(Boolean) as string[])].sort();
+  if (opponents.length >= 2) {
+    const opponentRow = document.createElement('div');
+    opponentRow.className = 'lg-opponent-row';
+    const label = document.createElement('span');
+    label.textContent = 'vs';
+    opponentRow.appendChild(label);
+    const sel = document.createElement('select');
+    sel.className = 'lg-opponent-select';
+    const anyOpt = document.createElement('option');
+    anyOpt.value = '';
+    anyOpt.textContent = 'any opponent';
+    sel.appendChild(anyOpt);
+    for (const opp of opponents) {
+      const opt = document.createElement('option');
+      opt.value = opp;
+      opt.textContent = opp;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', () => {
+      activeOpponentFilter = sel.value || null;
+      applyGameFilters();
+    });
+    opponentRow.appendChild(sel);
+    filterBar.appendChild(opponentRow);
+  }
+
+  $lgResults.appendChild(filterBar);
+  applyGameFilters();
 }
 
 // ---- Search & navigation ------------------------------------------------

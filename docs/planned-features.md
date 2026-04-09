@@ -133,8 +133,8 @@ requests. `GameSummary.result` is "win" | "lost" | "draw" (player perspective) a
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| L10 | Result filter | P2 | Low | Pending | Chip-row filter above the game list: `[All] [Win] [Loss] [Draw]`. Client-side filter on `result`. Chips are mutually exclusive; "All" resets. Count badge per chip (e.g. "Loss (8)"). |
-| L11 | Opponent filter | P2 | Low | Pending | Dropdown or text filter populated from unique `opponent` values in the loaded list. Combinable with L10 (e.g. "show only losses against TwixtBot"). Resets when a new player is searched. |
+| L10 | Result filter | P2 | Low | **Done** | Chip-row filter above the game list: `[All] [Win] [Loss] [Draw]`. Client-side filter on `result`. Chips are mutually exclusive; "All" resets. Count badge per chip (e.g. "Loss (8)"). |
+| L11 | Opponent filter | P2 | Low | **Done** | Dropdown or text filter populated from unique `opponent` values in the loaded list. Combinable with L10 (e.g. "show only losses against TwixtBot"). Resets when a new player is searched. |
 
 **Combined UX sketch:**
 

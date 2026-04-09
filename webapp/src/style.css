@@ -704,6 +704,58 @@ html, body {
 }
 .lg-card-back:hover { color: #5dade2; }
 
+/* L10+L11 Filter bar above the game list */
+.lg-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  margin-bottom: 6px;
+}
+
+.lg-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lg-chip {
+  padding: 4px 10px;
+  border: 1px solid rgba(100,160,220,0.4);
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(200,220,240,0.75);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.lg-chip:hover  { background: rgba(100,160,220,0.12); color: #e8f4fd; }
+.lg-chip.active { background: rgba(100,160,220,0.22); color: #e8f4fd; border-color: rgba(100,160,220,0.7); }
+
+.lg-opponent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: rgba(200,220,240,0.7);
+}
+
+.lg-opponent-select {
+  background: #0f1929;
+  color: #e8f4fd;
+  border: 1px solid rgba(100,160,220,0.4);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color-scheme: dark;
+  cursor: pointer;
+}
+
 /* Paste / upload section */
 #lg-paste-divider {
   font-family: 'Courier Prime', monospace;
