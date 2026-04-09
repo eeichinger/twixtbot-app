@@ -354,6 +354,9 @@ html, body {
   text-align: right;
 }
 
+.sparkline-wrap {
+  padding: 2px 14px 0;
+}
 .eval-sparkline {
   display: block;
   width: 100%;

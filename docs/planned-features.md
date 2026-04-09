@@ -72,7 +72,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | V1 | MCTS progress indicator | P1 | Low | **Done** | Ping interval changed to 1s; `timeLimitMs` added to payload. Thinking overlay shows elapsed/budget (e.g. "3s / 10s"). |
 | V2 | Top-3 candidate moves display | P1 | Low | **Done** | Collapsible analysis panel below status bar: top-3 move bars (visit% + Q), win-prob label (`formatWinProb`), and eval sparkline. Worker extended to return `top3` via `top3FromScores()` in naf.ts. |
 | V3 | Win probability display | P1 | Low | **Done** | Worker result includes `topQ` (value head output, −1..+1). Show as a labelled bar or numeric readout after each AI move. Present in twixtbot-ui. |
-| V4 | Evaluation history chart | P2 | Medium | Pending | Record win-probability after each move; display as a sparkline or bar chart below the board. Requires accumulating per-move values across the game. Present in twixtbot-ui. |
+| V4 | Evaluation history chart | P2 | Medium | **Done** | Sparkline moved outside the collapsible analysis body — always visible (with padding) as soon as the analysis panel appears after the first AI move. |
 | V5 | Policy heatmap overlay | P2 | Medium | Pending | On demand, run a single NN forward pass and color each cell by its policy probability (blue→cyan→green gradient). No MCTS needed. Present in twixtbot-ui. |
 | V6 | MCTS best-line visualization | P3 | High | Pending | While the bot is computing, draw the current principal variation on the board. Requires the worker to stream the best line in `ping` messages. Present in twixtbot-ui. |
 
