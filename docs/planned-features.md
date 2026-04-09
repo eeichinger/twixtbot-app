@@ -19,6 +19,19 @@ Last updated: 2026-04-09.
 
 Status: **Done** · **Pending** · **Future**
 
+### Stable references — feature IDs only
+
+**Feature IDs are the only stable reference handles** (e.g. `V3`, `L1`, `A4`).
+Section headings and their numbering are organisational only; never cite a section
+letter or number as a reference. Rules:
+
+- Once assigned, a feature ID is **never changed or reused**, even if the feature is
+  dropped (mark it as removed in the Notes column instead).
+- New features get the **next unused number** within their prefix group (e.g. the next
+  LG feature after L11 is L12). Do not insert items between existing numbers.
+- Sub-sections within a top-level section use **descriptive names only** — no letter
+  or number suffix. Inserting a new sub-section never requires renumbering anything.
+
 ---
 
 ## 1 · AI / MCTS Algorithm
@@ -91,7 +104,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 ## 6 · Little Golem Integration
 
-### 6a · MVP (shipped ✓)
+### LG · MVP (shipped ✓)
 
 - Player search by name → game list with rating
 - Game replay via step controls (first/prev/next/last + arrow keys)
@@ -103,7 +116,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 - Result display from SGF `RE` field
 - Highlight last move
 
-### 6b · Analysis in Replay
+### LG · Analysis in Replay
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
@@ -112,7 +125,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
 | L4 | Move list panel in replay | P2 | Low | Pending | Expandable scrollable list of moves in algebraic notation with jump-to-position on tap. Designed in `lg-ux-concept.md`. Shares implementation with U1. |
 
-### 6c · Game List Filters (Explore screen)
+### LG · Game List Filters (Explore screen)
 
 Both filters operate on the already-fetched `GameSummary[]` array — no new network
 requests. `GameSummary.result` is "win" | "lost" | "draw" (player perspective) and
@@ -142,7 +155,7 @@ If fewer than 2 distinct opponents exist, the dropdown is hidden.
 
 ---
 
-### 6d · Infrastructure / Reliability
+### LG · Infrastructure / Reliability
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
@@ -152,7 +165,7 @@ If fewer than 2 distinct opponents exist, the dropdown is hidden.
 | L8 | Favourite players | P3 | Low | Pending | Star players appear at the top of search results without re-typing. |
 | L9 | "TwixT bot games" shortcut | P3 | Low | Pending | One-tap to search games where TwixtBot (plid=3101) is a player. |
 
-### 6e · LG Correspondence Play (requires auth investigation)
+### LG · Correspondence Play (requires auth investigation)
 
 > **Blocked** pending verification of LG auth/move endpoints. See open items in
 > `docs/lg-planned-features.md`.
