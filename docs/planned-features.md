@@ -120,7 +120,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| L1 | "Analyse this position" button in replay | P1 | Low | Pending | From any move in the replay, launch the AI worker on the current board and show the best move. Directly reuses existing hint/suggest infrastructure. |
+| L1 | "Analyse this position" button in replay | P1 | Low | **Done** | Analyse button in replay header; panel shows win-prob + top-3 bars below board. Reuses worker; `replayAnalysisMode` flag gates result handler. Panel clears on move navigation. |
 | L2 | Move quality overlay | P2 | Medium | Pending | For each played move, compare to AI's top choice — colour the move dot green/yellow/red based on policy rank. Requires inference on every position. |
 | L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
 | L4 | Move list panel in replay | P2 | Low | Pending | Expandable scrollable list of moves in algebraic notation with jump-to-position on tap. Designed in `lg-ux-concept.md`. Shares implementation with U1. |

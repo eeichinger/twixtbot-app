@@ -193,10 +193,20 @@
       <header id="replay-header">
         <button id="replay-back-btn" title="Back to search">&#8592;</button>
         <span id="replay-title">Replay</span>
+        <button id="replay-analyse-btn" title="Analyse this position">Analyse</button>
       </header>
       <main id="replay-board-container">
         <canvas id="replay-canvas"></canvas>
       </main>
+      <div id="replay-analysis-panel" class="hidden">
+        <div class="analysis-header replay-analysis-header">
+          <span id="replay-win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </div>
+        <div class="analysis-body" style="display:block">
+          <div id="replay-top3-bars" class="top3-bars"></div>
+        </div>
+      </div>
       <footer id="replay-controls">
         <button id="replay-first-btn" title="First move">&#124;&#9664;</button>
         <button id="replay-prev-btn"  title="Previous move">&#9664;</button>

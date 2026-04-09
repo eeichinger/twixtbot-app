@@ -422,6 +422,17 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
+      if (replayAnalysisMode) {
+        replayAnalysisMode = false;
+        $replayAnalyseBtn.disabled = false;
+        $replayAnalyseBtn.textContent = 'Analyse';
+        if (msg.top3) {
+          updateReplayAnalysisPanel(msg.topQ as number, msg.top3 as Top3Move[]);
+        }
+        worker.terminate();
+        workerAlive = false;
+        return;
+      }
       const moveStr = msg.move === 'swap' ? 'swap' : `x=${(msg.move as {x:number,y:number}).x} y=${(msg.move as {x:number,y:number}).y}`;
       if (msg.trials != null) {
         const qSign = (msg.topQ as number) >= 0 ? '+' : '';
@@ -904,6 +915,12 @@ function setThinking(thinking: boolean): void {
 let replayBoardUI: BoardUI | null = null;
 let replayParsedGame: ParsedGame | null = null;
 let replayMoveIndex = 0;
+let replayAnalysisMode = false;
+
+const $replayAnalyseBtn    = document.getElementById('replay-analyse-btn') as HTMLButtonElement;
+const $replayAnalysisPanel = document.getElementById('replay-analysis-panel')!;
+const $replayWinProbText   = document.getElementById('replay-win-prob-text')!;
+const $replayTop3Bars      = document.getElementById('replay-top3-bars')!;
 
 /** Cached player search results for instant back-navigation without re-fetch. */
 let lastPlayerResults: PlayerResult[] = [];
@@ -922,6 +939,7 @@ function hideAllScreens(): void {
   $gameScreen.classList.add('hidden');
   $lgScreen.classList.add('hidden');
   $replayScreen.classList.add('hidden');
+  replayAnalysisMode = false;
 }
 
 function showLgScreen(): void {
@@ -1218,6 +1236,66 @@ function replayShowAtIndex(index: number): void {
   $replayPrevBtn.disabled  = replayMoveIndex === 0;
   $replayNextBtn.disabled  = replayMoveIndex === total;
   $replayLastBtn.disabled  = replayMoveIndex === total;
+
+  // Hide analysis panel when navigating to a different move.
+  $replayAnalysisPanel.classList.add('hidden');
+  $replayAnalyseBtn.disabled = false;
+  $replayAnalyseBtn.textContent = 'Analyse';
+}
+
+function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
+  $replayWinProbText.textContent = formatWinProb(topQ);
+  $replayAnalysisPanel.classList.remove('hidden');
+  $replayTop3Bars.innerHTML = '';
+  for (const m of top3) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const coord = document.createElement('span');
+    coord.className = 'bar-coord';
+    coord.textContent = `(${m.x},${m.y})`;
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill' + (m.q >= 0 ? ' ai-winning' : '');
+    fill.style.width = `${m.pct.toFixed(1)}%`;
+    track.appendChild(fill);
+    const pct = document.createElement('span');
+    pct.className = 'bar-pct';
+    pct.textContent = `${m.pct.toFixed(0)}%`;
+    row.appendChild(coord);
+    row.appendChild(track);
+    row.appendChild(pct);
+    $replayTop3Bars.appendChild(row);
+  }
+}
+
+function requestReplayAnalysis(): void {
+  if (!replayParsedGame || replayAnalysisMode) return;
+  replayAnalysisMode = true;
+  $replayAnalyseBtn.disabled = true;
+  $replayAnalyseBtn.textContent = 'Analysing…';
+  $replayAnalysisPanel.classList.add('hidden');
+
+  const history = replayParsedGame.moves
+    .slice(0, replayMoveIndex)
+    .map(m => m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y });
+
+  const strength = getBotStrength();
+  const moveMsg = {
+    type: 'move',
+    history,
+    timeLimitMs: getThinkTimeSec() * 1000,
+    maxTrials: strength.maxTrials,
+    temperature: 0,
+  };
+
+  if (workerAlive) {
+    worker.postMessage(moveMsg);
+  } else {
+    initWorker(() => {
+      worker.postMessage(moveMsg);
+    });
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -1339,11 +1417,12 @@ function init(): void {
     $lgFileInput.value = ''; // reset so the same file can be re-selected
   });
 
-  // Replay screen — back and step controls
+  // Replay screen — back, analyse, and step controls
   document.getElementById('replay-back-btn')?.addEventListener('click', () => {
     showLgScreen();
     if ($lgResults.children.length > 0) lgSetState('results');
   });
+  $replayAnalyseBtn.addEventListener('click', () => requestReplayAnalysis());
   $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
   $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));
   $replayNextBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex + 1));

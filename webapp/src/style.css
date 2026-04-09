@@ -1004,6 +1004,20 @@ html, body {
 }
 #replay-header button:hover  { background: rgba(100,160,220,0.1); }
 #replay-header button:active { background: rgba(100,160,220,0.2); }
+#replay-header button:disabled { opacity: 0.35; cursor: default; background: transparent; }
+
+#replay-analysis-panel {
+  background: #0a1525;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  flex-shrink: 0;
+}
+.replay-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 28px;
+}
 
 #replay-title {
   font-family: 'Courier Prime', monospace;
