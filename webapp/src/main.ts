@@ -232,6 +232,7 @@ const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $resignBtn       = document.getElementById('resign-btn')!;
+const $heatmapBtn      = document.getElementById('heatmap-btn') as HTMLButtonElement;
 const $winProbBar      = document.getElementById('win-prob-bar')!;
 const $analysisPanel   = document.getElementById('analysis-panel')!;
 const $analysisToggle  = document.getElementById('analysis-toggle')!;
@@ -305,6 +306,11 @@ let evalHistory: number[] = [];
 /** Top-3 move data from the most recent AI result, applied in onAiMove(). */
 let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
 
+/** V5: Heatmap state — true while the heatmap overlay is shown. */
+let heatmapActive  = false;
+/** True while a heatmap eval-position request is in-flight. */
+let pendingHeatmap = false;
+
 // -------------------------------------------------------------------------
 // UI helpers
 // -------------------------------------------------------------------------
@@ -329,6 +335,22 @@ function syncHintButton(): void {
 function syncResignButton(): void {
   const show = !gameOver && !aiThinking && game.history.length > 0;
   $resignBtn.classList.toggle('hidden', !show);
+}
+
+/** Show the heatmap button in PvC mode whenever the game is active and not over. */
+function syncHeatmapButton(): void {
+  const show = gameMode === 'pvc' && !gameOver && !aiThinking;
+  $heatmapBtn.classList.toggle('hidden', !show);
+  $heatmapBtn.disabled = pendingHeatmap;
+}
+
+/** Clear the heatmap overlay and reset active state (called on move / undo / redo). */
+function clearHeatmap(): void {
+  if (heatmapActive) {
+    heatmapActive = false;
+    $heatmapBtn.classList.remove('active');
+    board.setHeatmap(null, 0);
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -571,6 +593,15 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       // Free the worker heap now that batch eval is complete.
       worker.terminate();
       workerAlive = false;
+    } else if (msg.type === 'eval-position-result') {
+      // V5: heatmap result — apply to board if still active, then free worker.
+      pendingHeatmap = false;
+      syncHeatmapButton();
+      if (heatmapActive) {
+        board.setHeatmap(msg.policy as Float32Array, msg.turn as number);
+      }
+      worker.terminate();
+      workerAlive = false;
     }
   };
 
@@ -640,6 +671,28 @@ function requestAiMove(): void {
 }
 
 // -------------------------------------------------------------------------
+// V5: Policy heatmap
+// -------------------------------------------------------------------------
+
+function requestHeatmap(): void {
+  if (pendingHeatmap || gameOver || aiThinking) return;
+  pendingHeatmap = true;
+  $heatmapBtn.disabled = true;
+  diagLog('heatmap-request');
+
+  const history: MoveMsg[] = game.history.map(m =>
+    m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
+  );
+  const req = { type: 'eval-position', history };
+
+  if (workerAlive) {
+    worker.postMessage(req);
+  } else {
+    initWorker(() => worker.postMessage(req));
+  }
+}
+
+// -------------------------------------------------------------------------
 // Event handlers
 // -------------------------------------------------------------------------
 
@@ -665,6 +718,7 @@ function onHumanMove(p: { x: number; y: number }): void {
   if (!isHumanTurn(game.turn, gameMode)) return;
   if (!game.legalPlays().contains(p)) return;
 
+  clearHeatmap();
   diagLog(`human-move x=${p.x} y=${p.y}`);
   stopHeartbeat();
   game.play(p);
@@ -692,12 +746,14 @@ function onHumanMove(p: { x: number; y: number }): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
@@ -718,12 +774,14 @@ function onHumanSwap(): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
@@ -774,6 +832,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     syncMoveList();
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
@@ -793,6 +852,7 @@ function onHintClick(): void {
 function onRedoClick(): void {
   if (gameOver || aiThinking || !game.canRedo) return;
 
+  clearHeatmap();
   if (gameMode === 'pvp') {
     game.redo();
     board.setGame(game, true);
@@ -810,6 +870,7 @@ function onRedoClick(): void {
   syncMoveList();
   syncHintButton();
   syncResignButton();
+  syncHeatmapButton();
   syncRedoButton();
   syncThinkTimeVisibility();
 }
@@ -825,6 +886,7 @@ function onUndoClick(): void {
     board.setEnabled(true);
   }
 
+  clearHeatmap();
   if (gameMode === 'pvp') {
     // PvP: undo exactly 1 move (the last player's move).
     if (game.history.length >= 1) {
@@ -835,6 +897,7 @@ function onUndoClick(): void {
       syncMoveList();
       syncHintButton();
       syncResignButton();
+      syncHeatmapButton();
       syncRedoButton();
       syncThinkTimeVisibility();
     }
@@ -864,6 +927,7 @@ function onUndoClick(): void {
     syncMoveList();
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncRedoButton();
     syncThinkTimeVisibility();
   }
@@ -945,9 +1009,11 @@ function startNewGame(): void {
     workerAlive = false;
     diagLog('worker-terminated (new-game cancelled in-flight move)');
   }
-  gameOver    = false;
-  aiThinking  = false;
-  tsgfResult  = '?';
+  gameOver       = false;
+  aiThinking     = false;
+  tsgfResult     = '?';
+  heatmapActive  = false;
+  pendingHeatmap = false;
   game = new Game();
   evalHistory = [];
   pendingAnalysis = null;
@@ -961,6 +1027,8 @@ function startNewGame(): void {
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.remove('hidden');
+  $heatmapBtn.classList.add('hidden');
+  $heatmapBtn.classList.remove('active');
   board.setGame(game, false);
   syncThinkTimeVisibility();
 
@@ -975,6 +1043,7 @@ function startNewGame(): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncHeatmapButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   }
@@ -1009,12 +1078,13 @@ function setThinking(thinking: boolean): void {
     $thinkingOverlay.classList.remove('hidden');
     board.setEnabled(false);
     $hintBtn.classList.add('hidden');
+    $heatmapBtn.classList.add('hidden');
     $thinkTimeSelect.classList.remove('hidden'); // keep visible so user can adjust mid-think
   } else {
     $thinkingOverlay.classList.add('hidden');
     $thinkingProgress.textContent = '';
     if (!gameOver) board.setEnabled(true);
-    // syncHintButton() / syncThinkTimeVisibility() called by whoever transitions out of thinking.
+    // syncHintButton() / syncThinkTimeVisibility() / syncHeatmapButton() called by whoever transitions out of thinking.
   }
 }
 
@@ -1613,6 +1683,16 @@ function init(): void {
   $undoBtn.addEventListener('click',    onUndoClick);
   $redoBtn.addEventListener('click',    onRedoClick);
   $resignBtn.addEventListener('click',  onResignClick);
+  $heatmapBtn.addEventListener('click', () => {
+    if (pendingHeatmap || gameOver || aiThinking) return;
+    heatmapActive = !heatmapActive;
+    $heatmapBtn.classList.toggle('active', heatmapActive);
+    if (!heatmapActive) {
+      board.setHeatmap(null, 0);
+    } else {
+      requestHeatmap();
+    }
+  });
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
   $exportBtn.addEventListener('click',  onExportClick);

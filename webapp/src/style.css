@@ -417,6 +417,7 @@ html, body {
 #resign-btn                  { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
 #resign-btn:hover            { background: rgba(220,80,60,0.12); }
 #resign-btn:active           { background: rgba(220,80,60,0.22); }
+#heatmap-btn.active          { background: rgba(60,200,100,0.18); border-color: rgba(60,200,100,0.6); color: #90e8a0; }
 #settings-btn                { padding: 8px 12px; }
 
 /* Settings slide-up panel */

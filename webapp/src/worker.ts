@@ -276,6 +276,21 @@ self.onmessage = async (e: MessageEvent) => {
     // trial and then return (time limit check will stop the loop on next iteration).
     if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 0.5, 0.0);
 
+  } else if (msg.type === 'eval-position') {
+    // Single NN forward pass for the current position — returns full policy array for heatmap (V5).
+    if (!player) {
+      self.postMessage({ type: 'error', message: 'Worker not initialised' });
+      return;
+    }
+    try {
+      const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
+      const g = replayHistory(history);
+      const [topQ, policy] = await player.eval(g);
+      self.postMessage({ type: 'eval-position-result', topQ, policy, turn: g.turn });
+    } catch (err) {
+      self.postMessage({ type: 'error', message: String(err) });
+    }
+
   } else if (msg.type === 'eval-game') {
     // Batch-evaluate every position in a game with a single NN forward pass each.
     // Returns streaming eval-game-progress messages, then eval-game-done.

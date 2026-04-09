@@ -23,6 +23,7 @@
  */
 
 import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt, ptToString } from './twixt.js';
+import { policyIndexToPoint } from './naf.js';
 
 // -------------------------------------------------------------------------
 // Colours
@@ -85,6 +86,10 @@ export class BoardUI {
   private game: Game | null = null;
   private enabled = false;   // whether human can tap
 
+  /** Policy logits (Float32Array[528]) for heatmap overlay; null when hidden. */
+  private heatmapPolicy: Float32Array | null = null;
+  private heatmapTurn: number = BLACK;
+
   constructor(canvas: HTMLCanvasElement, cb: UICallbacks) {
     this.canvas = canvas;
     this.ctx    = canvas.getContext('2d')!;
@@ -103,6 +108,17 @@ export class BoardUI {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+  }
+
+  /**
+   * Show or clear the policy heatmap overlay.
+   * Pass a Float32Array[528] of raw NN logits and the turn (BLACK/WHITE) to show;
+   * pass null to hide.  Triggers a re-render.
+   */
+  setHeatmap(policy: Float32Array | null, turn: number): void {
+    this.heatmapPolicy = policy;
+    this.heatmapTurn   = turn;
+    this.render();
   }
 
   // -------------------------------------------------------------------------
@@ -258,6 +274,7 @@ export class BoardUI {
     this._drawLabels();
     this._drawLinks();
     this._drawNodes(pegR);
+    if (this.heatmapPolicy) this._drawHeatmap(pegR);
     // Coordinate tooltip for hover (desktop) — drawn above nodes, below drag callout.
     if (this.hoveredCell && this.enabled && !this.dragCell && this._isLegalForHuman(this.hoveredCell)) {
       const [cx, cy] = this._toCanvas(this.hoveredCell);
@@ -452,6 +469,52 @@ export class BoardUI {
           ctx.fill();
         }
       }
+    }
+  }
+
+  /**
+   * Draw a per-cell probability heatmap from raw NN policy logits.
+   *
+   * Applies softmax over the 528 legal-move logits, then overlays each board
+   * cell with a translucent circle whose colour and opacity encode relative
+   * strength: blue (low) → cyan → green (top move).
+   */
+  private _drawHeatmap(pegR: number): void {
+    if (!this.heatmapPolicy) return;
+    const { ctx } = this;
+    const policy = this.heatmapPolicy;
+    const turn   = this.heatmapTurn;
+    const n = policy.length; // 528
+
+    // Softmax (numerically stable)
+    let maxL = -Infinity;
+    for (let i = 0; i < n; i++) if (policy[i] > maxL) maxL = policy[i];
+    let sum = 0;
+    const probs = new Float32Array(n);
+    for (let i = 0; i < n; i++) { probs[i] = Math.exp(policy[i] - maxL); sum += probs[i]; }
+    for (let i = 0; i < n; i++) probs[i] /= sum;
+
+    let maxP = 0;
+    for (let i = 0; i < n; i++) if (probs[i] > maxP) maxP = probs[i];
+    if (maxP === 0) return;
+
+    const r = pegR * 1.2;
+
+    for (let i = 0; i < n; i++) {
+      const rel = probs[i] / maxP; // 0..1 relative to best move
+      if (rel < 0.05) continue;    // skip negligible cells
+
+      const p = policyIndexToPoint(turn, i);
+      const [cx, cy] = this._toCanvas(p);
+
+      // blue (240°) → cyan (180°) → green (120°) as rel increases
+      const hue   = Math.round(240 - 120 * rel);
+      const alpha = (0.18 + rel * 0.62).toFixed(2);
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.fillStyle = `hsla(${hue},100%,55%,${alpha})`;
+      ctx.fill();
     }
   }
 
