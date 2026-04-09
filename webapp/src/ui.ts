@@ -22,7 +22,7 @@
  * Desktop: single click / pointerdown as before.
  */
 
-import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt } from './twixt.js';
+import { Game, Point, SIZE, BLACK, WHITE, allLinks, pt, ptToString } from './twixt.js';
 
 // -------------------------------------------------------------------------
 // Colours
@@ -258,6 +258,11 @@ export class BoardUI {
     this._drawLabels();
     this._drawLinks();
     this._drawNodes(pegR);
+    // Coordinate tooltip for hover (desktop) — drawn above nodes, below drag callout.
+    if (this.hoveredCell && this.enabled && !this.dragCell && this._isLegalForHuman(this.hoveredCell)) {
+      const [cx, cy] = this._toCanvas(this.hoveredCell);
+      this._drawCoordLabel(cx, cy - pegR * 2.4, ptToString(this.hoveredCell));
+    }
     // Offset peg preview drawn last so it appears on top of everything.
     if (this.dragCell) this._drawDragCallout(pegR);
   }
@@ -460,7 +465,7 @@ export class BoardUI {
    */
   private _drawDragCallout(pegR: number): void {
     if (!this.dragCell || !this.game) return;
-    const { ctx, game, cellSize } = this;
+    const { ctx, game } = this;
     const turn = game.turn;
     const fill = turn === BLACK ? COLORS.pegBlack : COLORS.pegWhite;
     const rim  = turn === BLACK ? COLORS.pegBlackRim : COLORS.pegWhiteRim;
@@ -474,5 +479,32 @@ export class BoardUI {
     ctx.strokeStyle = rim;
     ctx.lineWidth   = 1;
     ctx.stroke();
+
+    // Coordinate label below the floating peg (between peg and finger).
+    this._drawCoordLabel(cx, cy + pegR * 2.2, ptToString(this.dragCell));
+  }
+
+  /** Draw a small dark pill with a coordinate label centred at (cx, cy). */
+  private _drawCoordLabel(cx: number, cy: number, label: string): void {
+    const { ctx } = this;
+    const fs = Math.max(Math.round(this.cellSize * 0.52), 9);
+    ctx.save();
+    ctx.font         = `bold ${fs}px 'Courier Prime', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    const tw  = ctx.measureText(label).width;
+    const pad = Math.max(fs * 0.3, 3);
+    const bw  = tw + pad * 2;
+    const bh  = fs + pad * 1.5;
+
+    ctx.fillStyle = 'rgba(10,20,40,0.85)';
+    ctx.beginPath();
+    ctx.rect(cx - bw / 2, cy - bh / 2, bw, bh);
+    ctx.fill();
+
+    ctx.fillStyle = '#e8f4fd';
+    ctx.fillText(label, cx, cy);
+    ctx.restore();
   }
 }

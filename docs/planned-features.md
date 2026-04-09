@@ -94,7 +94,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
 | U1 | Move list display | P2 | Low | **Done** | Collapsible panel (hidden until first move). Shared `renderMoveList()` function: paired rounds (WHITE left, BLACK right), current half-move highlighted, auto-scroll. |
-| U2 | Coordinate tooltip on hover/drag | P3 | Low | Pending | Show the cell coordinate (e.g. "h5") near the cursor/finger while hovering or dragging. Present in twixtbot-ui. |
+| U2 | Coordinate tooltip on hover/drag | P3 | Low | **Done** | Show the cell coordinate (e.g. "h5") near the cursor/finger while hovering or dragging. Present in twixtbot-ui. |
 | U3 | Show/hide board labels toggle | P3 | Low | Pending | Allow hiding the column/row letter labels. Present in twixtbot-ui. |
 | U4 | Show/hide guidelines toggle | P3 | Low | Pending | Allow hiding the knight-move guide lines. Present in twixtbot-ui. |
 | U5 | Player name customization | P3 | Low | Pending | Configurable display names for each player (shown in status bar). Present in twixtbot-ui. |
