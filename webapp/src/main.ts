@@ -805,6 +805,7 @@ function onHumanMove(p: { x: number; y: number }): void {
 function onHumanSwap(): void {
   if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode) || game.history.length !== 1) return;
 
+  clearHeatmap();
   diagLog('human-swap');
   stopHeartbeat();
   game.play('swap');
@@ -887,6 +888,7 @@ function onAiMove(moveMsg: MoveMsg): void {
 
 function onHintClick(): void {
   if (gameOver || aiThinking || !isHumanTurn(game.turn, gameMode)) return;
+  clearHeatmap();
   diagLog(`hint-requested turn=${game.turn}`);
   requestAiMove();
 }
