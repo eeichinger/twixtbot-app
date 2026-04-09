@@ -4,7 +4,7 @@ Consolidated from `docs/improvements.md`, `docs/lg-planned-features.md`,
 `docs/network-pvp-research.md`, and a feature comparison against
 `github.com/eeichinger/twixtbot-ui` (the desktop Python app).
 
-Last updated: 2026-04-09 (session 4).
+Last updated: 2026-04-09 (session 5).
 
 ---
 
@@ -84,7 +84,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 |----|---------|----------|--------|--------|-------|
 | G1 | Redo | P2 | Medium | **Done** | `redoStack` added to `Game` class in twixt.ts; `redo()` and `canRedo` exposed. In PvC mode redoes the AI move too (stored, no MCTS re-run). Redo button in control bar; strength/think-time moved to settings slide-up panel. |
 | G2 | Resign | P2 | Low | **Done** | Explicit resign button ending the game as a loss for the resigning player. Auto-resign threshold (configurable, default 0.95 opponent win prob) is a nice-to-have extension. Present in twixtbot-ui. |
-| G3 | Bot vs Bot mode | P3 | Medium | Pending | Let both players be AI (each with auto-move). Useful for demonstration and strength testing. Present in twixtbot-ui. |
+| G3 | Bot vs Bot mode | P3 | Medium | Won't do | Not a priority for this app's focus on human play and learning. |
 | G4 | Allow crossing own links (SCL) | P3 | Medium | Pending | Rule variant: a player's own links may cross each other (non-standard). Present in twixtbot-ui. Off by default. |
 
 ---
@@ -95,10 +95,11 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 |----|---------|----------|--------|--------|-------|
 | U1 | Move list display | P2 | Low | **Done** | Collapsible panel (hidden until first move). Shared `renderMoveList()` function: paired rounds (WHITE left, BLACK right), current half-move highlighted, auto-scroll. |
 | U2 | Coordinate tooltip on hover/drag | P3 | Low | **Done** | Show the cell coordinate (e.g. "h5") near the cursor/finger while hovering or dragging. Present in twixtbot-ui. |
-| U3 | Show/hide board labels toggle | P3 | Low | Pending | Allow hiding the column/row letter labels. Present in twixtbot-ui. |
-| U4 | Show/hide guidelines toggle | P3 | Low | Pending | Allow hiding the knight-move guide lines. Present in twixtbot-ui. |
+| U3 | Show/hide board labels toggle | P3 | Low | Won't do | Low value for target audience; clutters settings. |
+| U4 | Show/hide guidelines toggle | P3 | Low | Won't do | Low value for target audience; clutters settings. |
 | U5 | Player name customization | P3 | Low | Pending | Configurable display names for each player (shown in status bar). Present in twixtbot-ui. |
 | U6 | Player color customization | P4 | Low | Future | User-selectable peg colors for each player. Present in twixtbot-ui. Lower priority given the accessible blue/orange defaults. |
+| U7 | In-app help overlay | P2 | Low | **Done** | "?" button on every screen opens a full-screen overlay with the app README. Content bundled at build time via Vite `?raw` import — works offline. Escape or ✕ to close. |
 
 ---
 
@@ -207,13 +208,7 @@ All P1 features and most P2 features are shipped. Remaining work by category:
 2. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
    low effort, high reliability payoff.
 
-3. **U3 + U4** — Board label and guideline toggles. Both are simple boolean flags in
-   `BoardUI`; add two settings rows to the existing settings slide-up panel.
-
-4. **G3** — Bot vs Bot mode. Auto-move both players; useful for demos and strength
-   testing. Moderate effort; reuses existing worker + game loop.
-
-5. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
+3. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
    from the worker; draw as an arrow chain on the board canvas. High effort.
 
 ### Requires retraining

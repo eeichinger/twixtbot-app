@@ -404,6 +404,98 @@ html, body {
 #export-btn:hover  { background: rgba(100,160,220,0.1); }
 #export-btn:active { background: rgba(100,160,220,0.2); }
 
+/* Help button — present in every screen header */
+.help-btn {
+  padding: 4px 8px;
+  border: 1px solid rgba(100,160,220,0.4);
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(160,200,230,0.85);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.help-btn:hover  { background: rgba(100,160,220,0.1); }
+.help-btn:active { background: rgba(100,160,220,0.2); }
+#intro-help-btn  { position: absolute; top: 12px; right: 12px; }
+
+/* Help overlay */
+#help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px 16px;
+  box-sizing: border-box;
+}
+#help-panel {
+  background: #0f1929;
+  border: 1px solid rgba(100,160,220,0.3);
+  border-radius: 4px;
+  width: 100%;
+  max-width: 680px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#help-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(100,160,220,0.2);
+  flex-shrink: 0;
+}
+#help-panel-header > span {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1rem;
+  color: #e8f4fd;
+  letter-spacing: 1.5px;
+}
+#help-close-btn {
+  background: none;
+  border: 1px solid rgba(100,160,220,0.45);
+  border-radius: 2px;
+  color: #e8f4fd;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  font-family: 'Courier Prime', monospace;
+  transition: background 0.15s;
+}
+#help-close-btn:hover { background: rgba(100,160,220,0.1); }
+#help-content {
+  overflow-y: auto;
+  padding: 16px 20px 28px;
+  flex: 1;
+  color: #b8cfe0;
+  -webkit-overflow-scrolling: touch;
+}
+/* Rendered markdown typography */
+#help-content h1 { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: #e8f4fd; letter-spacing: 2px; margin: 0 0 12px; }
+#help-content h2 { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; color: #e8f4fd; letter-spacing: 1px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(100,160,220,0.2); }
+#help-content h3 { font-family: 'Courier Prime', monospace; font-size: 0.95rem; font-weight: bold; color: #a0c8e8; margin: 16px 0 6px; }
+#help-content h4 { font-family: 'Courier Prime', monospace; font-size: 0.88rem; font-weight: bold; color: #a0c8e8; margin: 12px 0 4px; }
+#help-content p  { font-family: 'Courier Prime', monospace; font-size: 0.87rem; line-height: 1.6; margin: 6px 0 10px; }
+#help-content ul, #help-content ol { font-family: 'Courier Prime', monospace; font-size: 0.87rem; line-height: 1.6; margin: 4px 0 10px; padding-left: 22px; }
+#help-content li { margin: 3px 0; }
+#help-content hr { border: none; border-top: 1px solid rgba(100,160,220,0.15); margin: 16px 0; }
+#help-content code { background: rgba(100,160,220,0.12); padding: 1px 5px; border-radius: 2px; font-size: 0.85em; font-family: 'Courier Prime', monospace; }
+#help-content pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(100,160,220,0.15); border-radius: 3px; padding: 10px 12px; overflow-x: auto; margin: 8px 0 12px; font-family: 'Courier Prime', monospace; font-size: 0.82rem; line-height: 1.5; }
+#help-content pre code { background: none; padding: 0; }
+#help-content table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; font-family: 'Courier Prime', monospace; font-size: 0.85rem; }
+#help-content th, #help-content td { border: 1px solid rgba(100,160,220,0.2); padding: 5px 8px; text-align: left; }
+#help-content th { background: rgba(100,160,220,0.1); color: #e8f4fd; }
+#help-content a  { color: #5da8e8; }
+#help-content strong { color: #e0eeff; }
+
 /* Bottom control bar — mirrors #replay-controls layout */
 #game-controls {
   display: flex;

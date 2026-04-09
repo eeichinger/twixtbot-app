@@ -18,13 +18,14 @@ import {
 } from './game-mode.js';
 import type { Top3Move } from './naf.js';
 import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, filterGameSummaries, type GameSummary, type PlayerResult, type ResultFilter } from './lg-api.js';
+import readmeMd from '../../README.md?raw';
 import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
 // -------------------------------------------------------------------------
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-09-f';
+const APP_VERSION = '2026-04-09-g';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -218,6 +219,94 @@ function stopHeartbeat(): void {
 }
 
 // -------------------------------------------------------------------------
+// Markdown → HTML renderer (used for in-app help overlay, U7)
+// Handles the subset of Markdown used in README.md: headings, paragraphs,
+// bold/italic/code/links inline, fenced code blocks, tables, lists, hr.
+// -------------------------------------------------------------------------
+
+function md2html(src: string): string {
+  function esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function inline(s: string): string {
+    return esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+      .replace(/`([^`]+)`/g,     '<code>$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  const lines = src.split('\n');
+  const html: string[] = [];
+  type Block = 'none' | 'ul' | 'ol' | 'pre' | 'table';
+  let state: Block = 'none';
+  let preLines: string[] = [];
+  let paraLines: string[] = [];
+  let tableFirst = true;
+
+  function flushPara(): void {
+    if (paraLines.length) {
+      html.push(`<p>${paraLines.map(inline).join(' ')}</p>`);
+      paraLines = [];
+    }
+  }
+  function closeBlock(): void {
+    flushPara();
+    if (state === 'ul')    html.push('</ul>');
+    if (state === 'ol')    html.push('</ol>');
+    if (state === 'table') html.push('</table>');
+    state = 'none';
+    tableFirst = true;
+  }
+
+  for (const raw of lines) {
+    if (state === 'pre') {
+      if (raw.startsWith('```')) {
+        html.push('<pre><code>' + esc(preLines.join('\n')) + '</code></pre>');
+        preLines = []; state = 'none';
+      } else { preLines.push(raw); }
+      continue;
+    }
+    if (raw.startsWith('```'))         { closeBlock(); state = 'pre'; continue; }
+    if (/^-{3,}$/.test(raw.trim()))    { closeBlock(); html.push('<hr>'); continue; }
+
+    const hm = raw.match(/^(#{1,4}) (.*)/);
+    if (hm) { closeBlock(); html.push(`<h${hm[1].length}>${inline(hm[2])}</h${hm[1].length}>`); continue; }
+
+    if (raw.startsWith('|')) {
+      if (state !== 'table') { closeBlock(); html.push('<table>'); state = 'table'; tableFirst = true; }
+      const cells = raw.split('|').slice(1, -1).map(c => c.trim());
+      if (cells.every(c => /^[-: ]+$/.test(c))) continue;
+      const tag = tableFirst ? 'th' : 'td';
+      html.push('<tr>' + cells.map(c => `<${tag}>${inline(c)}</${tag}>`).join('') + '</tr>');
+      tableFirst = false;
+      continue;
+    }
+    if (state === 'table') { closeBlock(); }
+
+    const ulm = raw.match(/^[-*] (.*)/);
+    if (ulm) {
+      if (state === 'ol') closeBlock();
+      if (state !== 'ul') { flushPara(); html.push('<ul>'); state = 'ul'; }
+      html.push(`<li>${inline(ulm[1])}</li>`); continue;
+    }
+    const olm = raw.match(/^\d+\. (.*)/);
+    if (olm) {
+      if (state === 'ul') closeBlock();
+      if (state !== 'ol') { flushPara(); html.push('<ol>'); state = 'ol'; }
+      html.push(`<li>${inline(olm[1])}</li>`); continue;
+    }
+
+    if (raw.trim() === '') { closeBlock(); continue; }
+
+    if (state === 'ul' || state === 'ol') closeBlock();
+    paraLines.push(raw);
+  }
+  closeBlock();
+  return html.join('\n');
+}
+
+// -------------------------------------------------------------------------
 // DOM references
 // -------------------------------------------------------------------------
 
@@ -248,6 +337,10 @@ const $settingsBackdrop = document.getElementById('settings-backdrop')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
 const $strengthSelect  = document.getElementById('strength-select')  as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
+
+// Help overlay (U7)
+const $helpOverlay     = document.getElementById('help-overlay')!;
+const $helpContent     = document.getElementById('help-content')!;
 
 // LG Explore screen
 const $lgScreen        = document.getElementById('lg-screen')!;
@@ -1161,6 +1254,25 @@ let activeResultFilter: ResultFilter = 'all';
 /** Active opponent filter (L11); null = any. */
 let activeOpponentFilter: string | null = null;
 
+// -------------------------------------------------------------------------
+// Help overlay (U7)
+// -------------------------------------------------------------------------
+
+let helpRendered = false;
+
+function openHelp(): void {
+  if (!helpRendered) {
+    $helpContent.innerHTML = md2html(readmeMd);
+    helpRendered = true;
+  }
+  $helpOverlay.classList.remove('hidden');
+  $helpContent.scrollTop = 0;
+}
+
+function closeHelp(): void {
+  $helpOverlay.classList.add('hidden');
+}
+
 /** All screens that must be hidden when switching between them. */
 function hideAllScreens(): void {
   $introScreen.classList.add('hidden');
@@ -1681,6 +1793,19 @@ function init(): void {
   window.addEventListener('beforeunload', () => diagLog('page-beforeunload'));
   window.addEventListener('pagehide',     (e) => diagLog(`page-pagehide persisted=${e.persisted}`));
   window.addEventListener('pageshow',     (e) => diagLog(`page-pageshow persisted=${e.persisted}`));
+
+  // Help overlay (U7): wire all .help-btn buttons + close button + Escape key
+  document.querySelectorAll<HTMLButtonElement>('.help-btn').forEach(btn => {
+    btn.addEventListener('click', openHelp);
+  });
+  document.getElementById('help-close-btn')?.addEventListener('click', closeHelp);
+  $helpOverlay.addEventListener('click', (e) => { if (e.target === $helpOverlay) closeHelp(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$helpOverlay.classList.contains('hidden')) {
+      closeHelp();
+      e.stopPropagation();
+    }
+  });
 
   // Visibility — fires when user backgrounds the app or screen turns off
   document.addEventListener('visibilitychange', () => {

@@ -27,6 +27,7 @@
       <div class="bp-corner tr"></div>
       <div class="bp-corner bl"></div>
       <div class="bp-corner br"></div>
+      <button class="help-btn" id="intro-help-btn" title="Help">?</button>
 
       <div class="loading-logo"><span class="bp-logo-cap">T</span><span class="bp-logo-sm">wix</span><span class="bp-logo-cap">T</span></div>
 
@@ -92,6 +93,7 @@
         <span id="status-text">Your turn (Blue)</span>
         <div id="win-prob-bar"></div>
         <button id="export-btn"  title="Download game as .tsgf file">Save</button>
+        <button class="help-btn" title="Help">?</button>
       </header>
       <!-- Analysis panel: shown after each AI move, collapsible -->
       <div id="analysis-panel" class="hidden">
@@ -163,6 +165,7 @@
       <header id="lg-header">
         <button id="lg-back-btn" title="Back to intro">&#8592;</button>
         <span id="lg-title">Little Golem</span>
+        <button class="help-btn" title="Help">?</button>
       </header>
       <div id="lg-body">
         <div id="lg-search-row">
@@ -205,6 +208,7 @@
         <span id="replay-title">Replay</span>
         <button id="replay-heatmap-btn" title="Toggle policy heatmap">Heatmap</button>
         <button id="replay-analyse-btn" title="Analyse this position">Analyse</button>
+        <button class="help-btn" title="Help">?</button>
       </header>
       <main id="replay-board-container">
         <canvas id="replay-canvas"></canvas>
@@ -245,6 +249,17 @@
         <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
         <span class="footer-license">MIT License</span>
       </footer>
+    </div>
+
+    <!-- Help overlay — reachable from any screen via the ? button -->
+    <div id="help-overlay" class="hidden">
+      <div id="help-panel">
+        <div id="help-panel-header">
+          <span>Help</span>
+          <button id="help-close-btn" title="Close help">&#x2715;</button>
+        </div>
+        <div id="help-content"></div>
+      </div>
     </div>
 
     <!-- Diagnostic log overlay — lives outside game-screen so it's reachable from any screen -->
