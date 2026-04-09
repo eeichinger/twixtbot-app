@@ -13,7 +13,7 @@ import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
-  isHumanTurn, turnStatusText, resultMessage,
+  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult,
   type GameMode,
 } from './game-mode.js';
 import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
@@ -229,6 +229,7 @@ const $loadingMsg      = document.getElementById('loading-msg')!;
 const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
+const $resignBtn       = document.getElementById('resign-btn')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
@@ -292,6 +293,12 @@ function syncThinkTimeVisibility(): void {
 function syncHintButton(): void {
   const show = !gameOver && !aiThinking && isHumanTurn(game.turn, gameMode);
   $hintBtn.classList.toggle('hidden', !show);
+}
+
+/** Show the resign button once at least one move has been played and the game is active. */
+function syncResignButton(): void {
+  const show = !gameOver && !aiThinking && game.history.length > 0;
+  $resignBtn.classList.toggle('hidden', !show);
 }
 
 // -------------------------------------------------------------------------
@@ -461,10 +468,12 @@ function onHumanMove(p: { x: number; y: number }): void {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -483,10 +492,12 @@ function onHumanSwap(): void {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -527,6 +538,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     updateSwapBtn();
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
   } else {
@@ -553,6 +565,7 @@ function onUndoClick(): void {
       $statusText.textContent = turnStatusText(game.turn, gameMode);
       updateSwapBtn();
       syncHintButton();
+      syncResignButton();
       syncThinkTimeVisibility();
     }
   } else {
@@ -571,8 +584,17 @@ function onUndoClick(): void {
       updateSwapBtn();
     }
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
   }
+}
+
+function onResignClick(): void {
+  if (gameOver || aiThinking || game.history.length === 0) return;
+  diagLog(`resign turn=${game.turn}`);
+  tsgfResult = resignTsgfResult(game.turn);
+  const opponent = game.turn === BLACK ? WHITE : BLACK;
+  endGame(resultMessage(opponent, gameMode));
 }
 
 function onExportClick(): void {
@@ -654,6 +676,7 @@ function startNewGame(): void {
   syncThinkTimeVisibility();
 
   syncHintButton();
+  syncResignButton();
   syncThinkTimeVisibility();
   if (gameMode === 'pvc') {
     requestAiMove();
@@ -662,6 +685,7 @@ function startNewGame(): void {
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
+    syncResignButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   }
@@ -685,6 +709,7 @@ function endGame(msg: string): void {
   $hintBtn.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.add('hidden');
+  $resignBtn.classList.add('hidden');
   $thinkTimeSelect.classList.add('hidden');
 }
 
@@ -1004,6 +1029,7 @@ function init(): void {
 
   $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
+  $resignBtn.addEventListener('click',  onResignClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
   $exportBtn.addEventListener('click',  onExportClick);

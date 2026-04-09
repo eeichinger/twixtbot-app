@@ -11,6 +11,7 @@ import {
   isHumanTurn,
   turnStatusText,
   resultMessage,
+  resignTsgfResult,
 } from '../game-mode.js';
 
 // -------------------------------------------------------------------------
@@ -91,5 +92,22 @@ describe('resultMessage — WHITE wins', () => {
 
   it('returns "Orange wins!" in PvP mode', () => {
     expect(resultMessage(WHITE, 'pvp')).toBe('Orange wins!');
+  });
+});
+
+// -------------------------------------------------------------------------
+// resignTsgfResult
+// -------------------------------------------------------------------------
+
+describe('resignTsgfResult', () => {
+  // In TSGF, WHITE = first mover = written as "B" (Black in SGF notation).
+  // When WHITE resigns, TSGF White (i.e. the second mover) wins → 'W+'.
+  it('returns "W+" when WHITE (first mover / TSGF Black) resigns', () => {
+    expect(resignTsgfResult(WHITE)).toBe('W+');
+  });
+
+  // When BLACK (second mover, TSGF White) resigns, TSGF Black (first mover) wins → 'B+'.
+  it('returns "B+" when BLACK (second mover / TSGF White) resigns', () => {
+    expect(resignTsgfResult(BLACK)).toBe('B+');
   });
 });

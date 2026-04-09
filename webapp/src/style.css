@@ -309,6 +309,9 @@ html, body {
 #game-controls button:active            { background: rgba(100,160,220,0.2); }
 #game-controls #think-time-select,
 #game-controls #strength-select         { color-scheme: dark; }
+#resign-btn                             { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
+#resign-btn:hover                       { background: rgba(220,80,60,0.12); }
+#resign-btn:active                      { background: rgba(220,80,60,0.22); }
 
 /* Swap button: floating pill overlaid at the bottom of the board */
 #swap-btn {

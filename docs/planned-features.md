@@ -83,7 +83,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
 | G1 | Redo | P2 | Medium | Pending | After undo, allow stepping forward again. Requires a redo stack alongside the existing undo history. Present in twixtbot-ui. |
-| G2 | Resign | P2 | Low | Pending | Explicit resign button ending the game as a loss for the resigning player. Auto-resign threshold (configurable, default 0.95 opponent win prob) is a nice-to-have extension. Present in twixtbot-ui. |
+| G2 | Resign | P2 | Low | **Done** | Explicit resign button ending the game as a loss for the resigning player. Auto-resign threshold (configurable, default 0.95 opponent win prob) is a nice-to-have extension. Present in twixtbot-ui. |
 | G3 | Bot vs Bot mode | P3 | Medium | Pending | Let both players be AI (each with auto-move). Useful for demonstration and strength testing. Present in twixtbot-ui. |
 | G4 | Allow crossing own links (SCL) | P3 | Medium | Pending | Rule variant: a player's own links may cross each other (non-standard). Present in twixtbot-ui. Off by default. |
 

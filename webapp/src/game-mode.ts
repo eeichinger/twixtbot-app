@@ -54,3 +54,14 @@ export function resultMessage(winner: number | null, mode: GameMode): string {
   if (mode === 'pvp') return winner === BLACK ? 'Blue wins!' : 'Orange wins!';
   return winner === BLACK ? 'You win!' : 'AI wins';
 }
+
+/**
+ * TSGF result string when the player whose turn it is resigns.
+ *
+ * In TSGF/SGF, WHITE is the first mover (written as "B"), so
+ * game.turn===WHITE means the TSGF Black player resigns → TSGF White wins → 'W+'.
+ * game.turn===BLACK means the TSGF White player resigns → TSGF Black wins → 'B+'.
+ */
+export function resignTsgfResult(turn: number): string {
+  return turn === WHITE ? 'W+' : 'B+';
+}
