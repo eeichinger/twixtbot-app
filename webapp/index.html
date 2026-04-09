@@ -92,18 +92,55 @@
         <span id="status-text">Your turn (Blue)</span>
         <div id="win-prob-bar"></div>
       </header>
+      <!-- Analysis panel: shown after each AI move, collapsible -->
+      <div id="analysis-panel" class="hidden">
+        <button id="analysis-toggle" class="analysis-header">
+          <span class="analysis-icon">▾</span>
+          <span id="win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </button>
+        <div class="sparkline-wrap"><canvas id="eval-sparkline" class="eval-sparkline"></canvas></div>
+        <div id="analysis-body" class="analysis-body">
+          <div id="top3-bars" class="top3-bars"></div>
+        </div>
+      </div>
+
+      <!-- Move list panel (U1) — collapsible, hidden until first move -->
+      <div id="move-list-panel" class="hidden">
+        <button id="move-list-toggle" class="move-list-header">
+          <span class="analysis-icon">▾</span>
+          <span id="move-list-label" class="move-list-label">Moves</span>
+        </button>
+        <div id="move-list-body" class="move-list-body"></div>
+      </div>
+
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
         <button id="swap-btn" class="hidden" title="Swap sides: take the AI's first peg and play as White">⇄ Swap</button>
       </main>
 
       <div id="game-controls">
-        <select id="strength-select" title="Bot strength" class="hidden"></select>
-        <select id="think-time-select" title="AI think time" class="hidden"></select>
         <button id="hint-btn"   title="Let the AI play this move for you" class="hidden">Suggest</button>
         <button id="undo-btn"   title="Undo your last move">Undo</button>
+        <button id="redo-btn"   title="Redo the undone move" disabled>Redo</button>
         <button id="resign-btn" title="Resign this game" class="hidden">Resign</button>
         <button id="export-btn" title="Download game as .tsgf file">Export</button>
+        <button id="settings-btn" title="Settings">⚙</button>
+      </div>
+
+      <!-- Settings slide-up panel -->
+      <div id="settings-panel" class="hidden">
+        <div id="settings-backdrop"></div>
+        <div id="settings-sheet">
+          <div class="settings-row">
+            <label class="settings-label">Strength</label>
+            <select id="strength-select" title="Bot strength"></select>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Think time</label>
+            <select id="think-time-select" title="AI think time"></select>
+          </div>
+        </div>
       </div>
 
       <footer id="game-footer">
@@ -116,6 +153,7 @@
       <div id="thinking-overlay" class="hidden">
         <div class="thinking-spinner"></div>
         <div>AI is thinking…</div>
+        <div id="thinking-progress" class="thinking-progress"></div>
       </div>
     </div>
 
@@ -164,10 +202,35 @@
       <header id="replay-header">
         <button id="replay-back-btn" title="Back to search">&#8592;</button>
         <span id="replay-title">Replay</span>
+        <button id="replay-analyse-btn" title="Analyse this position">Analyse</button>
       </header>
       <main id="replay-board-container">
         <canvas id="replay-canvas"></canvas>
       </main>
+      <div id="replay-analysis-panel" class="hidden">
+        <div class="analysis-header replay-analysis-header">
+          <span id="replay-win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </div>
+        <div class="analysis-body" style="display:block">
+          <div id="replay-top3-bars" class="top3-bars"></div>
+        </div>
+      </div>
+      <!-- Move list panel (L4) — collapsible, always present in replay -->
+      <div id="replay-move-list-panel">
+        <div class="move-list-header-row">
+          <button id="replay-move-list-toggle" class="move-list-header">
+            <span class="analysis-icon">▾</span>
+            <span id="replay-move-list-label" class="move-list-label">Moves</span>
+          </button>
+          <button id="replay-analyse-game-btn" title="Analyse all moves with AI" class="replay-analyse-game-btn">Analyse game</button>
+        </div>
+        <div id="replay-move-list-body" class="move-list-body"></div>
+        <div id="replay-game-sparkline-wrap" class="hidden">
+          <div class="sparkline-wrap"><canvas id="replay-game-sparkline" class="eval-sparkline"></canvas></div>
+        </div>
+      </div>
+
       <footer id="replay-controls">
         <button id="replay-first-btn" title="First move">&#124;&#9664;</button>
         <button id="replay-prev-btn"  title="Previous move">&#9664;</button>

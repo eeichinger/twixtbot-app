@@ -55,7 +55,7 @@ All require re-export or retraining.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| B1 | INT8 quantization of ONNX model | P1 | Low | Pending | 2–4× memory reduction; direct iOS relief. One Python call: `quantize_dynamic`. No retraining. |
+| B1 | INT8 quantization of ONNX model | P1 | Low | **Done** | `quantize_model.py` (dynamic INT8, weights only) added as CI step after ONNX export. fp32 model uploaded as `model-onnx-fp32` artifact for reference. Deployed model is now INT8. |
 | B7 | Deeper policy head (3×3 conv) | P2 | Medium | Pending | Current head is a 2-ch 1×1 bottleneck; upgrade to 3×3→3×3→1×1→528 (~14K params) |
 | B9a | KataGo global pooling bias | P2 | High | Pending | Add GlobalAvgPool→Linear→broadcast-add at each residual block; captures long-range link density. Full retrain needed. |
 | B5 | Attention / non-local blocks | P4 | High | Future | ViT-style MHA or non-local blocks; profile inference cost after B9a first |
@@ -69,10 +69,10 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| V1 | MCTS progress indicator | P1 | Low | Pending | Worker already sends `{ type: 'ping', iterations }` every 20 trials. Add a trial counter or progress bar to the thinking overlay. Zero new logic needed. |
-| V2 | Top-3 candidate moves display | P1 | Low | Pending | Worker result already includes `topPct`, `topQ`, `trials`. Show a small 3-bar panel (move label + policy %). Present in twixtbot-ui. |
+| V1 | MCTS progress indicator | P1 | Low | **Done** | Ping interval changed to 1s; `timeLimitMs` added to payload. Thinking overlay shows elapsed/budget (e.g. "3s / 10s"). |
+| V2 | Top-3 candidate moves display | P1 | Low | **Done** | Collapsible analysis panel below status bar: top-3 move bars (visit% + Q), win-prob label (`formatWinProb`), and eval sparkline. Worker extended to return `top3` via `top3FromScores()` in naf.ts. |
 | V3 | Win probability display | P1 | Low | **Done** | Worker result includes `topQ` (value head output, −1..+1). Show as a labelled bar or numeric readout after each AI move. Present in twixtbot-ui. |
-| V4 | Evaluation history chart | P2 | Medium | Pending | Record win-probability after each move; display as a sparkline or bar chart below the board. Requires accumulating per-move values across the game. Present in twixtbot-ui. |
+| V4 | Evaluation history chart | P2 | Medium | **Done** | Sparkline moved outside the collapsible analysis body — always visible (with padding) as soon as the analysis panel appears after the first AI move. |
 | V5 | Policy heatmap overlay | P2 | Medium | Pending | On demand, run a single NN forward pass and color each cell by its policy probability (blue→cyan→green gradient). No MCTS needed. Present in twixtbot-ui. |
 | V6 | MCTS best-line visualization | P3 | High | Pending | While the bot is computing, draw the current principal variation on the board. Requires the worker to stream the best line in `ping` messages. Present in twixtbot-ui. |
 
@@ -82,7 +82,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| G1 | Redo | P2 | Medium | Pending | After undo, allow stepping forward again. Requires a redo stack alongside the existing undo history. Present in twixtbot-ui. |
+| G1 | Redo | P2 | Medium | **Done** | `redoStack` added to `Game` class in twixt.ts; `redo()` and `canRedo` exposed. In PvC mode redoes the AI move too (stored, no MCTS re-run). Redo button in control bar; strength/think-time moved to settings slide-up panel. |
 | G2 | Resign | P2 | Low | **Done** | Explicit resign button ending the game as a loss for the resigning player. Auto-resign threshold (configurable, default 0.95 opponent win prob) is a nice-to-have extension. Present in twixtbot-ui. |
 | G3 | Bot vs Bot mode | P3 | Medium | Pending | Let both players be AI (each with auto-move). Useful for demonstration and strength testing. Present in twixtbot-ui. |
 | G4 | Allow crossing own links (SCL) | P3 | Medium | Pending | Rule variant: a player's own links may cross each other (non-standard). Present in twixtbot-ui. Off by default. |
@@ -93,7 +93,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| U1 | Move list display | P2 | Low | Pending | Scrollable numbered move notation panel (e.g. `1. h5  2. q12 …`) with current move highlighted. History is already tracked internally. Present in twixtbot-ui. Also needed for the replay viewer's planned move list (see L4). |
+| U1 | Move list display | P2 | Low | **Done** | Collapsible panel (hidden until first move). Shared `renderMoveList()` function: paired rounds (WHITE left, BLACK right), current half-move highlighted, auto-scroll. |
 | U2 | Coordinate tooltip on hover/drag | P3 | Low | Pending | Show the cell coordinate (e.g. "h5") near the cursor/finger while hovering or dragging. Present in twixtbot-ui. |
 | U3 | Show/hide board labels toggle | P3 | Low | Pending | Allow hiding the column/row letter labels. Present in twixtbot-ui. |
 | U4 | Show/hide guidelines toggle | P3 | Low | Pending | Allow hiding the knight-move guide lines. Present in twixtbot-ui. |
@@ -120,10 +120,10 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| L1 | "Analyse this position" button in replay | P1 | Low | Pending | From any move in the replay, launch the AI worker on the current board and show the best move. Directly reuses existing hint/suggest infrastructure. |
-| L2 | Move quality overlay | P2 | Medium | Pending | For each played move, compare to AI's top choice — colour the move dot green/yellow/red based on policy rank. Requires inference on every position. |
-| L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
-| L4 | Move list panel in replay | P2 | Low | Pending | Expandable scrollable list of moves in algebraic notation with jump-to-position on tap. Designed in `lg-ux-concept.md`. Shares implementation with U1. |
+| L1 | "Analyse this position" button in replay | P1 | Low | **Done** | Analyse button in replay header; panel shows win-prob + top-3 bars below board. Reuses worker; `replayAnalysisMode` flag gates result handler. Panel clears on move navigation. |
+| L2 | Move quality overlay | P2 | Medium | **Done** | "Analyse game" button runs `eval-game` worker batch (single NN forward pass per position). Move list entries coloured green (rank 0) / yellow (rank 1–4) / red (rank 5+) as results stream in. |
+| L3 | Evaluation graph | P2 | Medium | **Done** | Same `eval-game` batch as L2. Sparkline below move list shows topQ at each position with a vertical marker at the current replay move. Updates incrementally as results stream in. |
+| L4 | Move list panel in replay | P2 | Low | **Done** | Same `renderMoveList()` as U1. Replay screen: always present, clickable rows jump to that position via `replayShowAtIndex(i+1)`. Refreshes on every navigation. |
 
 ### LG · Game List Filters (Explore screen)
 

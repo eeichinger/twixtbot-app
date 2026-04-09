@@ -72,6 +72,17 @@ export function winProbBarStyle(topQ: number): { color: string; opacity: number 
 }
 
 /**
+ * Human-readable win-probability label for the analysis panel.
+ *
+ * topQ is from the AI (WHITE) perspective: +1 = AI certain win, -1 = human certain win.
+ * Returns e.g. "AI 73%" or "You 45%".
+ */
+export function formatWinProb(topQ: number): string {
+  const pct = Math.round(Math.min(Math.abs(topQ), 1) * 100);
+  return topQ >= 0 ? `AI ${pct}%` : `You ${pct}%`;
+}
+
+/**
  * TSGF result string when the player whose turn it is resigns.
  *
  * In TSGF/SGF, WHITE is the first mover (written as "B"), so

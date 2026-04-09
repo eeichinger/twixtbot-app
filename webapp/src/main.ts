@@ -8,14 +8,15 @@
  *   - Game mode selection (PvC vs PvP)
  */
 
-import { Game, pt, WHITE, BLACK } from './twixt.js';
-import type { MoveRecord } from './twixt.js';
+import { Game, pt, WHITE, BLACK, ptToString } from './twixt.js';
+import type { MoveRecord, Point } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
-  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle,
+  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle, formatWinProb,
   type GameMode,
 } from './game-mode.js';
+import type { Top3Move } from './naf.js';
 import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, filterGameSummaries, type GameSummary, type PlayerResult, type ResultFilter } from './lg-api.js';
 import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
@@ -23,7 +24,7 @@ import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sg
 // Version — update this string with every deploy to confirm new code loaded
 // -------------------------------------------------------------------------
 
-const APP_VERSION = '2026-04-08-d';
+const APP_VERSION = '2026-04-09-b';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -224,15 +225,25 @@ const $introScreen     = document.getElementById('intro-screen')!;
 const $loadingScreen   = document.getElementById('loading-screen')!;
 const $gameScreen      = document.getElementById('game-screen')!;
 const $statusText      = document.getElementById('status-text')!;
-const $thinkingOverlay = document.getElementById('thinking-overlay')!;
+const $thinkingOverlay  = document.getElementById('thinking-overlay')!;
+const $thinkingProgress = document.getElementById('thinking-progress')!;
 const $loadingMsg      = document.getElementById('loading-msg')!;
 const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $resignBtn       = document.getElementById('resign-btn')!;
 const $winProbBar      = document.getElementById('win-prob-bar')!;
+const $analysisPanel   = document.getElementById('analysis-panel')!;
+const $analysisToggle  = document.getElementById('analysis-toggle')!;
+const $winProbText     = document.getElementById('win-prob-text')!;
+const $top3Bars        = document.getElementById('top3-bars')!;
+const $evalSparkline   = document.getElementById('eval-sparkline') as HTMLCanvasElement;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
+const $redoBtn         = document.getElementById('redo-btn') as HTMLButtonElement;
+const $settingsBtn     = document.getElementById('settings-btn')!;
+const $settingsPanel   = document.getElementById('settings-panel')!;
+const $settingsBackdrop = document.getElementById('settings-backdrop')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
 const $strengthSelect  = document.getElementById('strength-select')  as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
@@ -258,6 +269,17 @@ const replayCanvas     = document.getElementById('replay-canvas') as HTMLCanvasE
 const $lgPasteInput    = document.getElementById('lg-paste-input') as HTMLTextAreaElement;
 const $lgFileInput     = document.getElementById('lg-file-input') as HTMLInputElement;
 
+// Move list panels
+const $moveListPanel   = document.getElementById('move-list-panel')!;
+const $moveListLabel   = document.getElementById('move-list-label')!;
+const $moveListBody    = document.getElementById('move-list-body')!;
+const $replayMoveListPanel       = document.getElementById('replay-move-list-panel')!;
+const $replayMoveListLabel       = document.getElementById('replay-move-list-label')!;
+const $replayMoveListBody        = document.getElementById('replay-move-list-body')!;
+const $replayAnalyseGameBtn      = document.getElementById('replay-analyse-game-btn') as HTMLButtonElement;
+const $replayGameSparklineWrap   = document.getElementById('replay-game-sparkline-wrap')!;
+const $replayGameSparkline       = document.getElementById('replay-game-sparkline') as HTMLCanvasElement;
+
 // -------------------------------------------------------------------------
 // State
 // -------------------------------------------------------------------------
@@ -278,16 +300,23 @@ let tsgfResult = '?';
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
 let gameMode: GameMode = loadGameMode();
 
+/** Per-move AI win-probability history (topQ after each AI move) for the sparkline. */
+let evalHistory: number[] = [];
+/** Top-3 move data from the most recent AI result, applied in onAiMove(). */
+let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
+
 // -------------------------------------------------------------------------
 // UI helpers
 // -------------------------------------------------------------------------
 
-/** Show/hide the think-time and strength selectors. */
+/** Show/hide the settings gear button. Visible during active play in both modes. */
 function syncThinkTimeVisibility(): void {
-  const showThinkTime = gameMode === 'pvc' ||
-    (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
-  $thinkTimeSelect.classList.toggle('hidden', !showThinkTime);
-  $strengthSelect.classList.toggle('hidden', !showThinkTime);
+  $settingsBtn.classList.toggle('hidden', gameOver);
+}
+
+/** Enable/disable the Redo button based on game state. */
+function syncRedoButton(): void {
+  $redoBtn.disabled = gameOver || aiThinking || !game.canRedo;
 }
 
 /** Show the "AI move" button only when a human can meaningfully delegate their turn. */
@@ -300,6 +329,154 @@ function syncHintButton(): void {
 function syncResignButton(): void {
   const show = !gameOver && !aiThinking && game.history.length > 0;
   $resignBtn.classList.toggle('hidden', !show);
+}
+
+// -------------------------------------------------------------------------
+// Move list (U1 / L4) — shared rendering
+// -------------------------------------------------------------------------
+
+function moveToStr(m: MoveRecord): string {
+  return m === 'swap' ? 'swap' : ptToString(m as Point);
+}
+
+/**
+ * Render a numbered move list into `container`.
+ * Moves are paired into rounds: WHITE (even indices) left, BLACK (odd) right.
+ * `currentIndex` is the 0-based half-move index to highlight; -1 = none.
+ * If `onHalfMoveClick` is provided, moves become clickable links.
+ * The highlighted row is scrolled into view after rendering.
+ */
+function renderMoveList(
+  container: HTMLElement,
+  moves: MoveRecord[],
+  currentIndex: number,
+  onHalfMoveClick?: (index: number) => void,
+): void {
+  container.innerHTML = '';
+  const rounds = Math.ceil(moves.length / 2);
+  let highlightedRow: HTMLElement | null = null;
+  for (let r = 0; r < rounds; r++) {
+    const row = document.createElement('div');
+    row.className = 'ml-row';
+
+    const num = document.createElement('span');
+    num.className = 'ml-num';
+    num.textContent = `${r + 1}.`;
+    row.appendChild(num);
+
+    for (let side = 0; side < 2; side++) {
+      const halfIdx = 2 * r + side;
+      if (halfIdx >= moves.length) break;
+      const span = document.createElement('span');
+      span.className = 'ml-move' +
+        (halfIdx === currentIndex ? ' ml-current' : '') +
+        (onHalfMoveClick ? ' ml-clickable' : '');
+      span.textContent = moveToStr(moves[halfIdx]);
+      if (onHalfMoveClick) {
+        span.addEventListener('click', () => onHalfMoveClick(halfIdx));
+      }
+      row.appendChild(span);
+      if (halfIdx === currentIndex) highlightedRow = row;
+    }
+
+    container.appendChild(row);
+  }
+  if (highlightedRow) highlightedRow.scrollIntoView({ block: 'nearest' });
+}
+
+function syncMoveList(): void {
+  const moves = game.history;
+  if (moves.length === 0) {
+    $moveListPanel.classList.add('hidden');
+    return;
+  }
+  $moveListPanel.classList.remove('hidden');
+  $moveListLabel.textContent = `Moves (${moves.length})`;
+  if ($moveListPanel.classList.contains('expanded')) {
+    renderMoveList($moveListBody, moves, moves.length - 1);
+  }
+}
+
+// -------------------------------------------------------------------------
+// Analysis panel (V2 — top-3 moves + win prob + eval sparkline)
+// -------------------------------------------------------------------------
+
+function updateAnalysisPanel(topQ: number, top3: Top3Move[]): void {
+  $winProbText.textContent = formatWinProb(topQ);
+  $analysisPanel.classList.remove('hidden');
+
+  // Top-3 bars
+  $top3Bars.innerHTML = '';
+  for (const m of top3) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const coord = document.createElement('span');
+    coord.className = 'bar-coord';
+    coord.textContent = `(${m.x},${m.y})`;
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill' + (m.q >= 0 ? ' ai-winning' : '');
+    fill.style.width = `${m.pct.toFixed(1)}%`;
+    track.appendChild(fill);
+    const pct = document.createElement('span');
+    pct.className = 'bar-pct';
+    pct.textContent = `${m.pct.toFixed(0)}%`;
+    row.appendChild(coord);
+    row.appendChild(track);
+    row.appendChild(pct);
+    $top3Bars.appendChild(row);
+  }
+
+  drawSparkline();
+}
+
+function drawSparkline(): void {
+  const canvas = $evalSparkline;
+  // Size canvas to its CSS display size
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(rect.width || 200, 200);
+  const h = 28;
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  // Centre line
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, mid);
+  ctx.lineTo(w, mid);
+  ctx.stroke();
+
+  if (evalHistory.length < 1) return;
+
+  // Fill area under the curve
+  const points = evalHistory.map((q, i) => ({
+    x: evalHistory.length === 1 ? w / 2 : (i / (evalHistory.length - 1)) * w,
+    y: mid - q * (mid - 2),   // q in [-1,1] → y in [h-2, 2]
+  }));
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, mid);
+  for (const pt of points) ctx.lineTo(pt.x, pt.y);
+  ctx.lineTo(points[points.length - 1].x, mid);
+  ctx.closePath();
+  // Use AI colour (red) when AI winning, human colour (blue) when human winning
+  const lastQ = evalHistory[evalHistory.length - 1];
+  ctx.fillStyle = lastQ >= 0 ? 'rgba(231,76,60,0.2)' : 'rgba(93,173,226,0.2)';
+  ctx.fill();
+
+  // Line on top
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.strokeStyle = lastQ >= 0 ? '#e74c3c' : '#5dade2';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 }
 
 // -------------------------------------------------------------------------
@@ -322,6 +499,17 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       diagLog('worker-ready');
       onReady();
     } else if (msg.type === 'result') {
+      if (replayAnalysisMode) {
+        replayAnalysisMode = false;
+        $replayAnalyseBtn.disabled = false;
+        $replayAnalyseBtn.textContent = 'Analyse';
+        if (msg.top3) {
+          updateReplayAnalysisPanel(msg.topQ as number, msg.top3 as Top3Move[]);
+        }
+        worker.terminate();
+        workerAlive = false;
+        return;
+      }
       const moveStr = msg.move === 'swap' ? 'swap' : `x=${(msg.move as {x:number,y:number}).x} y=${(msg.move as {x:number,y:number}).y}`;
       if (msg.trials != null) {
         const qSign = (msg.topQ as number) >= 0 ? '+' : '';
@@ -329,8 +517,10 @@ function initWorker(onReady: () => void = onWorkerReady): void {
         const barStyle = winProbBarStyle(msg.topQ as number);
         $winProbBar.style.backgroundColor = barStyle.color;
         $winProbBar.style.opacity = String(barStyle.opacity);
+        pendingAnalysis = { topQ: msg.topQ as number, top3: (msg.top3 as Top3Move[]) ?? [] };
       } else {
         diagLog(`worker-result ${moveStr}`);
+        pendingAnalysis = null;
       }
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
@@ -353,6 +543,34 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       }
     } else if (msg.type === 'ping') {
       diagLog(`worker-ping elapsed=${msg.elapsed}ms iters=${msg.iterations}`);
+      const sec = Math.round((msg.elapsed as number) / 1000);
+      const budget = msg.timeLimitMs != null ? ` / ${Math.round((msg.timeLimitMs as number) / 1000)}s` : '';
+      $thinkingProgress.textContent = `${sec}s${budget}`;
+    } else if (msg.type === 'eval-game-progress') {
+      // L2+L3: accumulate per-move eval as it streams in.
+      const idx = msg.moveIndex as number;
+      replayGameEvals[idx] = { topQ: msg.topQ as number, rank: msg.rank as number };
+      const total = replayParsedGame?.moves.length ?? 0;
+      $replayAnalyseGameBtn.textContent = `Analysing… (${idx + 1}/${total})`;
+      // Update sparkline incrementally.
+      $replayGameSparklineWrap.classList.remove('hidden');
+      drawReplayGameSparkline();
+      // Apply quality colours to move list if it is currently expanded.
+      if ($replayMoveListPanel.classList.contains('expanded')) {
+        applyMoveQuality($replayMoveListBody);
+      }
+    } else if (msg.type === 'eval-game-done') {
+      replayGameAnalysisRunning = false;
+      $replayAnalyseGameBtn.disabled = false;
+      $replayAnalyseGameBtn.textContent = 'Re-analyse';
+      // Final redraw with position marker.
+      drawReplayGameSparkline();
+      if ($replayMoveListPanel.classList.contains('expanded')) {
+        applyMoveQuality($replayMoveListBody);
+      }
+      // Free the worker heap now that batch eval is complete.
+      worker.terminate();
+      workerAlive = false;
     }
   };
 
@@ -467,17 +685,20 @@ function onHumanMove(p: { x: number; y: number }): void {
     return;
   }
 
+  syncMoveList();
   if (gameMode === 'pvp') {
     // Other human player takes over.
     board.setEnabled(true);
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -497,11 +718,13 @@ function onHumanSwap(): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -516,6 +739,13 @@ function onAiMove(moveMsg: MoveMsg): void {
   // Remember who just moved before game.play() advances game.turn.
   const movedColor = game.turn;
   game.play(move);
+
+  // Apply analysis data from the pending result (if MCTS ran)
+  if (pendingAnalysis) {
+    evalHistory.push(pendingAnalysis.topQ);
+    updateAnalysisPanel(pendingAnalysis.topQ, pendingAnalysis.top3);
+    pendingAnalysis = null;
+  }
 
   if (game.justWon()) {
     board.setGame(game, false);
@@ -541,8 +771,10 @@ function onAiMove(moveMsg: MoveMsg): void {
     diagLog('worker-terminated (freeing memory for human turn)');
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     updateSwapBtn();
+    syncMoveList();
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
   } else {
@@ -558,8 +790,40 @@ function onHintClick(): void {
   requestAiMove();
 }
 
+function onRedoClick(): void {
+  if (gameOver || aiThinking || !game.canRedo) return;
+
+  if (gameMode === 'pvp') {
+    game.redo();
+    board.setGame(game, true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    updateSwapBtn();
+  } else {
+    // PvC: redo up to 2 moves (AI + human), stopping at first human move
+    // that would trigger a new AI calculation. Re-apply stored moves only.
+    game.redo();  // first undone move (AI's)
+    if (game.canRedo) game.redo();  // second undone move (human's)
+    board.setGame(game, true);
+    $statusText.textContent = turnStatusText(BLACK, gameMode);
+    updateSwapBtn();
+  }
+  syncMoveList();
+  syncHintButton();
+  syncResignButton();
+  syncRedoButton();
+  syncThinkTimeVisibility();
+}
+
 function onUndoClick(): void {
-  if (gameOver || aiThinking) return;
+  if (aiThinking) return;
+  if (game.history.length === 0) return;
+
+  // Undoing after game over reactivates the game.
+  if (gameOver) {
+    gameOver = false;
+    userClickedStart = true;
+    board.setEnabled(true);
+  }
 
   if (gameMode === 'pvp') {
     // PvP: undo exactly 1 move (the last player's move).
@@ -568,8 +832,10 @@ function onUndoClick(): void {
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(game.turn, gameMode);
       updateSwapBtn();
+      syncMoveList();
       syncHintButton();
       syncResignButton();
+      syncRedoButton();
       syncThinkTimeVisibility();
     }
   } else {
@@ -578,6 +844,7 @@ function onUndoClick(): void {
     if (game.history.length >= 2) {
       game.undo();
       game.undo();
+      evalHistory.pop();  // remove the AI move's eval entry
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
       updateSwapBtn();
@@ -587,8 +854,17 @@ function onUndoClick(): void {
       $statusText.textContent = turnStatusText(BLACK, gameMode);
       updateSwapBtn();
     }
+    // Refresh analysis panel (redraw sparkline without the removed entry)
+    if (evalHistory.length > 0) {
+      drawSparkline();
+    } else {
+      $analysisPanel.classList.add('hidden');
+      $analysisPanel.classList.remove('expanded');
+    }
+    syncMoveList();
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
   }
 }
@@ -673,7 +949,15 @@ function startNewGame(): void {
   aiThinking  = false;
   tsgfResult  = '?';
   game = new Game();
+  evalHistory = [];
+  pendingAnalysis = null;
   $winProbBar.style.opacity = '0';
+  $analysisPanel.classList.add('hidden');
+  $analysisPanel.classList.remove('expanded');
+  $moveListPanel.classList.add('hidden');
+  $moveListPanel.classList.remove('expanded');
+  $moveListBody.innerHTML = '';
+  $redoBtn.disabled = true;
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.remove('hidden');
@@ -713,9 +997,10 @@ function endGame(msg: string): void {
   board.setEnabled(false);
   $hintBtn.classList.add('hidden');
   $swapBtn.classList.add('hidden');
-  $undoBtn.classList.add('hidden');
   $resignBtn.classList.add('hidden');
-  $thinkTimeSelect.classList.add('hidden');
+  $redoBtn.disabled = true;
+  syncThinkTimeVisibility();
+  // Undo stays visible so players can roll back and continue the game.
 }
 
 function setThinking(thinking: boolean): void {
@@ -727,6 +1012,7 @@ function setThinking(thinking: boolean): void {
     $thinkTimeSelect.classList.remove('hidden'); // keep visible so user can adjust mid-think
   } else {
     $thinkingOverlay.classList.add('hidden');
+    $thinkingProgress.textContent = '';
     if (!gameOver) board.setEnabled(true);
     // syncHintButton() / syncThinkTimeVisibility() called by whoever transitions out of thinking.
   }
@@ -739,6 +1025,16 @@ function setThinking(thinking: boolean): void {
 let replayBoardUI: BoardUI | null = null;
 let replayParsedGame: ParsedGame | null = null;
 let replayMoveIndex = 0;
+let replayAnalysisMode = false;
+
+/** Per-move eval results from eval-game batch run (L2+L3). Index = half-move index. */
+let replayGameEvals: Array<{ topQ: number; rank: number }> = [];
+let replayGameAnalysisRunning = false;
+
+const $replayAnalyseBtn    = document.getElementById('replay-analyse-btn') as HTMLButtonElement;
+const $replayAnalysisPanel = document.getElementById('replay-analysis-panel')!;
+const $replayWinProbText   = document.getElementById('replay-win-prob-text')!;
+const $replayTop3Bars      = document.getElementById('replay-top3-bars')!;
 
 /** Cached player search results for instant back-navigation without re-fetch. */
 let lastPlayerResults: PlayerResult[] = [];
@@ -757,6 +1053,8 @@ function hideAllScreens(): void {
   $gameScreen.classList.add('hidden');
   $lgScreen.classList.add('hidden');
   $replayScreen.classList.add('hidden');
+  replayAnalysisMode = false;
+  replayGameAnalysisRunning = false;
 }
 
 function showLgScreen(): void {
@@ -1030,6 +1328,16 @@ function openReplayForParsedGame(parsed: ParsedGame): void {
   $replayTitle.textContent = title;
   diagLog(`lg-replay-open id=${parsed.id} moves=${parsed.moves.length}`);
 
+  // Reset move list and game-analysis state for new game.
+  replayGameEvals = [];
+  replayGameAnalysisRunning = false;
+  $replayMoveListPanel.classList.remove('expanded');
+  $replayMoveListBody.innerHTML = '';
+  $replayMoveListLabel.textContent = `Moves (${parsed.moves.length})`;
+  $replayGameSparklineWrap.classList.add('hidden');
+  $replayAnalyseGameBtn.disabled = false;
+  $replayAnalyseGameBtn.textContent = 'Analyse game';
+
   hideAllScreens();
   $replayScreen.classList.remove('hidden');
 
@@ -1053,6 +1361,182 @@ function replayShowAtIndex(index: number): void {
   $replayPrevBtn.disabled  = replayMoveIndex === 0;
   $replayNextBtn.disabled  = replayMoveIndex === total;
   $replayLastBtn.disabled  = replayMoveIndex === total;
+
+  // Hide analysis panel when navigating to a different move.
+  $replayAnalysisPanel.classList.add('hidden');
+  $replayAnalyseBtn.disabled = false;
+  $replayAnalyseBtn.textContent = 'Analyse';
+
+  // Refresh move list label and body (if expanded).
+  $replayMoveListLabel.textContent = `Moves (${total})`;
+  if ($replayMoveListPanel.classList.contains('expanded')) {
+    renderMoveList(
+      $replayMoveListBody,
+      replayParsedGame.moves,
+      replayMoveIndex - 1,
+      (i) => replayShowAtIndex(i + 1),
+    );
+    if (replayGameEvals.length > 0) applyMoveQuality($replayMoveListBody);
+  }
+  // Redraw sparkline position marker if game analysis has run.
+  if (replayGameEvals.length > 0) drawReplayGameSparkline();
+}
+
+function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
+  $replayWinProbText.textContent = formatWinProb(topQ);
+  $replayAnalysisPanel.classList.remove('hidden');
+  $replayTop3Bars.innerHTML = '';
+  for (const m of top3) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const coord = document.createElement('span');
+    coord.className = 'bar-coord';
+    coord.textContent = `(${m.x},${m.y})`;
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill' + (m.q >= 0 ? ' ai-winning' : '');
+    fill.style.width = `${m.pct.toFixed(1)}%`;
+    track.appendChild(fill);
+    const pct = document.createElement('span');
+    pct.className = 'bar-pct';
+    pct.textContent = `${m.pct.toFixed(0)}%`;
+    row.appendChild(coord);
+    row.appendChild(track);
+    row.appendChild(pct);
+    $replayTop3Bars.appendChild(row);
+  }
+}
+
+function requestReplayAnalysis(): void {
+  if (!replayParsedGame || replayAnalysisMode) return;
+  replayAnalysisMode = true;
+  $replayAnalyseBtn.disabled = true;
+  $replayAnalyseBtn.textContent = 'Analysing…';
+  $replayAnalysisPanel.classList.add('hidden');
+
+  const history = replayParsedGame.moves
+    .slice(0, replayMoveIndex)
+    .map(m => m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y });
+
+  const strength = getBotStrength();
+  const moveMsg = {
+    type: 'move',
+    history,
+    timeLimitMs: getThinkTimeSec() * 1000,
+    maxTrials: strength.maxTrials,
+    temperature: 0,
+  };
+
+  if (workerAlive) {
+    worker.postMessage(moveMsg);
+  } else {
+    initWorker(() => {
+      worker.postMessage(moveMsg);
+    });
+  }
+}
+
+function drawReplayGameSparkline(): void {
+  if (replayGameEvals.length === 0) return;
+  const canvas = $replayGameSparkline;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(rect.width || 200, 200);
+  const h = 28;
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, mid);
+  ctx.lineTo(w, mid);
+  ctx.stroke();
+
+  const evals = replayGameEvals;
+  const points = evals.map((e, i) => ({
+    x: evals.length === 1 ? w / 2 : (i / (evals.length - 1)) * w,
+    y: mid - e.topQ * (mid - 2),
+  }));
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, mid);
+  for (const p of points) ctx.lineTo(p.x, p.y);
+  ctx.lineTo(points[points.length - 1].x, mid);
+  ctx.closePath();
+  const lastQ = evals[evals.length - 1].topQ;
+  ctx.fillStyle = lastQ >= 0 ? 'rgba(231,76,60,0.2)' : 'rgba(93,173,226,0.2)';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.strokeStyle = lastQ >= 0 ? '#e74c3c' : '#5dade2';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Draw a vertical marker at the current replay position
+  if (replayMoveIndex > 0 && evals.length > 0) {
+    const evalIdx = Math.min(replayMoveIndex - 1, evals.length - 1);
+    const markerX = evals.length === 1 ? w / 2 : (evalIdx / (evals.length - 1)) * w;
+    ctx.strokeStyle = 'rgba(200,220,240,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(markerX, 0);
+    ctx.lineTo(markerX, h);
+    ctx.stroke();
+  }
+}
+
+/** Apply quality CSS classes to move list rows based on replayGameEvals. */
+function applyMoveQuality(container: HTMLElement): void {
+  const spans = container.querySelectorAll<HTMLElement>('.ml-move');
+  spans.forEach((span, halfIdx) => {
+    span.classList.remove('ml-q-best', 'ml-q-good', 'ml-q-poor');
+    if (halfIdx < replayGameEvals.length) {
+      const { rank } = replayGameEvals[halfIdx];
+      if (rank < 0) return;  // swap move
+      if (rank === 0)      span.classList.add('ml-q-best');
+      else if (rank <= 4)  span.classList.add('ml-q-good');
+      else                 span.classList.add('ml-q-poor');
+    }
+  });
+}
+
+function requestReplayGameAnalysis(): void {
+  if (!replayParsedGame || replayGameAnalysisRunning) return;
+  replayGameAnalysisRunning = true;
+  replayGameEvals = [];
+  $replayAnalyseGameBtn.disabled = true;
+  $replayAnalyseGameBtn.textContent = 'Analysing…';
+
+  // Ensure move list is expanded so quality colours are visible.
+  if (!$replayMoveListPanel.classList.contains('expanded')) {
+    $replayMoveListPanel.classList.add('expanded');
+    renderMoveList(
+      $replayMoveListBody,
+      replayParsedGame.moves,
+      replayMoveIndex - 1,
+      (i) => replayShowAtIndex(i + 1),
+    );
+  }
+
+  const history = replayParsedGame.moves
+    .map(m => m === 'swap' ? 'swap' : { x: (m as {x:number;y:number}).x, y: (m as {x:number;y:number}).y });
+
+  const evalMsg = { type: 'eval-game', history };
+
+  if (workerAlive) {
+    worker.postMessage(evalMsg);
+  } else {
+    initWorker(() => {
+      worker.postMessage(evalMsg);
+    });
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -1127,10 +1611,42 @@ function init(): void {
 
   $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
+  $redoBtn.addEventListener('click',    onRedoClick);
   $resignBtn.addEventListener('click',  onResignClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
   $exportBtn.addEventListener('click',  onExportClick);
+  $analysisToggle.addEventListener('click', () => {
+    $analysisPanel.classList.toggle('expanded');
+    if ($analysisPanel.classList.contains('expanded')) drawSparkline();
+  });
+
+  // Move list toggle (game screen U1)
+  document.getElementById('move-list-toggle')?.addEventListener('click', () => {
+    $moveListPanel.classList.toggle('expanded');
+    if ($moveListPanel.classList.contains('expanded')) {
+      renderMoveList($moveListBody, game.history, game.history.length - 1);
+    }
+  });
+
+  // Move list toggle (replay screen L4)
+  document.getElementById('replay-move-list-toggle')?.addEventListener('click', () => {
+    $replayMoveListPanel.classList.toggle('expanded');
+    if ($replayMoveListPanel.classList.contains('expanded') && replayParsedGame) {
+      renderMoveList(
+        $replayMoveListBody,
+        replayParsedGame.moves,
+        replayMoveIndex - 1,
+        (i) => replayShowAtIndex(i + 1),
+      );
+    }
+  });
+  $settingsBtn.addEventListener('click', () => {
+    $settingsPanel.classList.remove('hidden');
+  });
+  $settingsBackdrop.addEventListener('click', () => {
+    $settingsPanel.classList.add('hidden');
+  });
 
   // LG Explore button on intro screen
   document.getElementById('lg-explore-btn')?.addEventListener('click', () => {
@@ -1163,11 +1679,13 @@ function init(): void {
     $lgFileInput.value = ''; // reset so the same file can be re-selected
   });
 
-  // Replay screen — back and step controls
+  // Replay screen — back, analyse, and step controls
   document.getElementById('replay-back-btn')?.addEventListener('click', () => {
     showLgScreen();
     if ($lgResults.children.length > 0) lgSetState('results');
   });
+  $replayAnalyseBtn.addEventListener('click', () => requestReplayAnalysis());
+  $replayAnalyseGameBtn.addEventListener('click', () => requestReplayGameAnalysis());
   $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
   $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));
   $replayNextBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex + 1));

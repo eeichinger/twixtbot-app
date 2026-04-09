@@ -267,6 +267,102 @@ html, body {
   transition: background-color 0.4s, opacity 0.4s;
 }
 
+/* Analysis panel (V2) — collapsible strip below the status bar */
+#analysis-panel {
+  background: #0a1525;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  flex-shrink: 0;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 14px;
+  height: 28px;
+  background: none;
+  border: none;
+  color: #e8f4fd;
+  cursor: pointer;
+  text-align: left;
+}
+.analysis-header:hover { background: rgba(100,160,220,0.06); }
+
+.analysis-icon {
+  font-size: 10px;
+  color: #6b8aad;
+  display: inline-block;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+#analysis-panel.expanded .analysis-icon { transform: rotate(180deg); }
+
+#win-prob-text {
+  font-family: 'Courier Prime', monospace;
+  font-size: 12px;
+  color: #ccc;
+  flex: 1;
+}
+
+.analysis-hint {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #3a5070;
+  letter-spacing: 0.05em;
+}
+
+.analysis-body {
+  display: none;
+  padding: 4px 14px 8px;
+}
+#analysis-panel.expanded .analysis-body { display: block; }
+
+.top3-bars { margin-bottom: 6px; }
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+.bar-coord {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #6b8aad;
+  min-width: 46px;
+}
+.bar-track {
+  flex: 1;
+  height: 6px;
+  background: #1a3050;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #5dade2;
+  transition: width 0.3s ease;
+}
+.bar-fill.ai-winning { background: #e74c3c; }
+.bar-pct {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #6b8aad;
+  min-width: 32px;
+  text-align: right;
+}
+
+.sparkline-wrap {
+  padding: 2px 14px 0;
+}
+.eval-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+
 #status-text {
   flex: 1;
   font-family: 'Courier Prime', monospace;
@@ -303,9 +399,7 @@ html, body {
   flex-shrink: 0;
 }
 
-#game-controls button,
-#game-controls #think-time-select,
-#game-controls #strength-select {
+#game-controls button {
   padding: 8px 14px;
   border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
@@ -316,15 +410,59 @@ html, body {
   cursor: pointer;
   transition: background 0.15s;
 }
-#game-controls button:hover,
-#game-controls #think-time-select:hover,
-#game-controls #strength-select:hover   { background: rgba(100,160,220,0.1); }
-#game-controls button:active            { background: rgba(100,160,220,0.2); }
-#game-controls #think-time-select,
-#game-controls #strength-select         { color-scheme: dark; }
-#resign-btn                             { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
-#resign-btn:hover                       { background: rgba(220,80,60,0.12); }
-#resign-btn:active                      { background: rgba(220,80,60,0.22); }
+#game-controls button:hover  { background: rgba(100,160,220,0.1); }
+#game-controls button:active { background: rgba(100,160,220,0.2); }
+#game-controls button:disabled { opacity: 0.35; cursor: default; }
+#game-controls button:disabled:hover { background: transparent; }
+#resign-btn                  { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
+#resign-btn:hover            { background: rgba(220,80,60,0.12); }
+#resign-btn:active           { background: rgba(220,80,60,0.22); }
+#settings-btn                { padding: 8px 12px; }
+
+/* Settings slide-up panel */
+#settings-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+#settings-backdrop {
+  flex: 1;
+  background: rgba(0,0,0,0.5);
+}
+#settings-sheet {
+  background: #0f1929;
+  border-top: 1px solid rgba(100,160,220,0.3);
+  border-radius: 12px 12px 0 0;
+  padding: 16px;
+}
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(100,160,220,0.1);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color: #e8f4fd;
+  letter-spacing: 0.05em;
+}
+#settings-sheet select {
+  padding: 6px 10px;
+  border: 1px solid rgba(100,160,220,0.45);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color-scheme: dark;
+  cursor: pointer;
+}
 
 /* Swap button: floating pill overlaid at the bottom of the board */
 #swap-btn {
@@ -447,6 +585,113 @@ html, body {
   text-transform: uppercase;
   pointer-events: none;
 }
+.thinking-progress {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: rgba(100,160,220,0.7);
+  letter-spacing: 0.05em;
+  min-height: 1em;
+}
+
+/* -------------------------------------------------------------------------
+   Move list panel (U1 / L4)
+   ------------------------------------------------------------------------- */
+#move-list-panel,
+#replay-move-list-panel {
+  background: #0a1525;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  flex-shrink: 0;
+}
+
+.move-list-header-row {
+  display: flex;
+  align-items: center;
+}
+.move-list-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 26px;
+  background: none;
+  border: none;
+  flex: 1;
+  cursor: pointer;
+  color: rgba(200,220,240,0.45);
+  text-align: left;
+  transition: background 0.15s;
+}
+.move-list-header:hover { background: rgba(100,160,220,0.06); }
+
+.replay-analyse-game-btn {
+  padding: 2px 10px;
+  margin-right: 10px;
+  border: 1px solid rgba(100,160,220,0.35);
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(200,220,240,0.6);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.replay-analyse-game-btn:hover  { background: rgba(100,160,220,0.1); }
+.replay-analyse-game-btn:active { background: rgba(100,160,220,0.2); }
+.replay-analyse-game-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* Move quality colours in move list (L2) */
+.ml-move.ml-q-best { color: #2ecc71; }
+.ml-move.ml-q-good { color: #f39c12; }
+.ml-move.ml-q-poor { color: #e74c3c; }
+#move-list-panel.expanded    .analysis-icon,
+#replay-move-list-panel.expanded .analysis-icon { transform: rotate(180deg); }
+
+.move-list-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
+
+.move-list-body {
+  display: none;
+  max-height: 88px;
+  overflow-y: auto;
+  padding: 2px 10px 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100,160,220,0.3) transparent;
+}
+#move-list-panel.expanded    .move-list-body,
+#replay-move-list-panel.expanded .move-list-body { display: block; }
+
+.ml-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 1px 0;
+}
+.ml-num {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.7rem;
+  color: rgba(200,220,240,0.3);
+  min-width: 26px;
+  text-align: right;
+  padding-right: 6px;
+  flex-shrink: 0;
+}
+.ml-move {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.72rem;
+  color: rgba(200,220,240,0.55);
+  min-width: 40px;
+}
+.ml-move.ml-current {
+  color: #e8f4fd;
+  font-weight: 700;
+}
+.ml-move.ml-clickable { cursor: pointer; }
+.ml-move.ml-clickable:hover { color: #5dade2; }
 
 /* Game-over overlay */
 #gameover-overlay {
@@ -862,6 +1107,20 @@ html, body {
 }
 #replay-header button:hover  { background: rgba(100,160,220,0.1); }
 #replay-header button:active { background: rgba(100,160,220,0.2); }
+#replay-header button:disabled { opacity: 0.35; cursor: default; background: transparent; }
+
+#replay-analysis-panel {
+  background: #0a1525;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  flex-shrink: 0;
+}
+.replay-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 28px;
+}
 
 #replay-title {
   font-family: 'Courier Prime', monospace;

@@ -285,3 +285,85 @@ describe('Game — crossing link blocking', () => {
     expect(crossingLink).toBeUndefined();
   });
 });
+
+// -------------------------------------------------------------------------
+// Redo (G1)
+// -------------------------------------------------------------------------
+
+describe('Game — redo', () => {
+  it('canRedo is false on a fresh game', () => {
+    expect(new Game().canRedo).toBe(false);
+  });
+
+  it('canRedo is false after a play with no prior undo', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    expect(g.canRedo).toBe(false);
+  });
+
+  it('canRedo becomes true after undo', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    g.undo();
+    expect(g.canRedo).toBe(true);
+  });
+
+  it('redo restores the board to the state before undo', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    g.play(pt(3, 3));
+    const historyBefore = [...g.history];
+    g.undo();
+    g.redo();
+    expect(g.history).toEqual(historyBefore);
+    expect(pegCount(g, BLACK)).toBe(1);
+  });
+
+  it('redo is a no-op when canRedo is false', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    const historyBefore = [...g.history];
+    g.redo();  // nothing to redo
+    expect(g.history).toEqual(historyBefore);
+  });
+
+  it('new play after undo clears the redo stack', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    g.undo();
+    expect(g.canRedo).toBe(true);
+    g.play(pt(6, 6));  // new move — clears redo
+    expect(g.canRedo).toBe(false);
+  });
+
+  it('multiple undo/redo round-trip restores original state', () => {
+    const g = new Game();
+    g.play(pt(5, 5));  // WHITE
+    g.play(pt(3, 3));  // BLACK
+    const after2 = [...g.history];
+    g.undo();
+    g.undo();
+    g.redo();
+    g.redo();
+    expect(g.history).toEqual(after2);
+    expect(pegCount(g, WHITE)).toBe(1);
+    expect(pegCount(g, BLACK)).toBe(1);
+  });
+
+  it('canRedo is false after full redo', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    g.undo();
+    g.redo();
+    expect(g.canRedo).toBe(false);
+  });
+
+  it('clone does not carry redo stack', () => {
+    const g = new Game();
+    g.play(pt(5, 5));
+    g.undo();
+    expect(g.canRedo).toBe(true);
+    const c = g.clone();
+    expect(c.canRedo).toBe(false);
+  });
+});

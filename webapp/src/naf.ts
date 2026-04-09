@@ -202,6 +202,45 @@ export function legalMovePolicyArray(game: Game): Float32Array {
 }
 
 // ---------------------------------------------------------------------------
+// Top-3 candidate move extraction
+// ---------------------------------------------------------------------------
+
+export type Top3Move = { x: number; y: number; pct: number; q: number };
+
+/**
+ * Extract the top-3 most-visited moves from an MCTS visit-count array.
+ *
+ * @param scores  Float64Array[528] of visit counts (indices match policy space)
+ * @param color   The side to move (WHITE or BLACK) — used for index→point mapping
+ * @param qValues Float64Array[528] of Q-values from mcts.root.Q, or null if unavailable
+ * @returns       Up to 3 entries sorted by visit count descending; empty if no visits
+ */
+export function top3FromScores(
+  scores: Float64Array,
+  color: number,
+  qValues: Float64Array | null,
+): Top3Move[] {
+  let total = 0;
+  for (let i = 0; i < scores.length; i++) total += scores[i];
+
+  const indices: number[] = [];
+  for (let i = 0; i < scores.length; i++) {
+    if (scores[i] > 0) indices.push(i);
+  }
+  indices.sort((a, b) => scores[b] - scores[a]);
+
+  return indices.slice(0, 3).map(idx => {
+    const p = policyIndexToPoint(color, idx);
+    return {
+      x: p.x,
+      y: p.y,
+      pct: total > 0 ? (scores[idx] / total) * 100 : 0,
+      q: qValues ? qValues[idx] : 0,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Value: 3-class logits → scalar score in [-1, 1]
 // ---------------------------------------------------------------------------
 

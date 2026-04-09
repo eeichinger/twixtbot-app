@@ -71,7 +71,7 @@ self.onmessage = async (e: MessageEvent) => {
       return;
     }
     isProcessing = true;
-    const { policyIndexToPoint } = await import('./naf.js');
+    const { policyIndexToPoint, top3FromScores } = await import('./naf.js');
 
     /**
      * Pick a move from a Float64Array of scores (visit counts or priors).
@@ -184,21 +184,22 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }
 
-      // Heartbeat: every 2s send a ping to main thread so it can confirm
-      // the worker is still alive. Pings stop when MCTS finishes or is killed.
+      // Heartbeat: every 1s send a ping to main thread so it can show elapsed
+      // time in the thinking overlay. Pings stop when MCTS finishes or is killed.
       let pingCount = 0;
       const moveStart = Date.now();
       const pingId = setInterval(() => {
         pingCount++;
-        self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, iterations: pingCount });
-      }, 2000);
+        self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, timeLimitMs, iterations: pingCount });
+      }, 1000);
 
-      /** Summarise visit-count distribution for diagnostics.
+      /** Summarise visit-count distribution for diagnostics and the analysis panel.
        *  trials    = total MCTS visits at root
        *  topPct    = % of visits on the most-visited move (search concentration)
        *  topQ      = Q of that move from the bot's perspective (-1 loss … +1 win)
+       *  top3      = up to 3 most-visited moves with coordinates, visit%, and Q
        */
-      function gatherStats(scores: Float64Array): { trials: number; topPct: number; topQ: number } {
+      function gatherStats(scores: Float64Array, turn: number): { trials: number; topPct: number; topQ: number; top3: ReturnType<typeof top3FromScores> } {
         let trials = 0, topN = 0, topIdx = 0;
         for (let i = 0; i < scores.length; i++) {
           trials += scores[i];
@@ -206,7 +207,8 @@ self.onmessage = async (e: MessageEvent) => {
         }
         const topPct = trials > 0 ? (topN / trials) * 100 : 0;
         const topQ   = mcts?.root ? mcts.root.Q[topIdx] : 0;
-        return { trials, topPct, topQ };
+        const top3   = top3FromScores(scores, turn, mcts?.root?.Q ?? null);
+        return { trials, topPct, topQ, top3 };
       }
 
       // Hard-deadline timer: fires between await yields if the internal
@@ -224,7 +226,7 @@ self.onmessage = async (e: MessageEvent) => {
           if (totalN === 0 && root.lmNonzero) {
             for (const i of root.lmNonzero) scores[i] = root.P[i];
           }
-          const stats = gatherStats(scores);
+          const stats = gatherStats(scores, turn);
           const elapsed = Date.now() - moveStart;
           self.postMessage({ type: 'result', move: pickMoveWithTemperature(scores, turn, temperature), ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {
@@ -254,7 +256,7 @@ self.onmessage = async (e: MessageEvent) => {
         const elapsed = Date.now() - moveStart;
         let moveMsg: MoveMsg;
         if (result instanceof Float64Array) {
-          const stats = gatherStats(result);
+          const stats = gatherStats(result, turn);
           moveMsg = pickMoveWithTemperature(result, turn, temperature);
           self.postMessage({ type: 'result', move: moveMsg, ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {
@@ -273,5 +275,39 @@ self.onmessage = async (e: MessageEvent) => {
     // Reset tree to free memory; the in-flight async MCTS will finish its current
     // trial and then return (time limit check will stop the loop on next iteration).
     if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 0.5, 0.0);
+
+  } else if (msg.type === 'eval-game') {
+    // Batch-evaluate every position in a game with a single NN forward pass each.
+    // Returns streaming eval-game-progress messages, then eval-game-done.
+    // No MCTS — just the raw policy/value output for each position.
+    if (!player) {
+      self.postMessage({ type: 'error', message: 'Worker not initialised' });
+      return;
+    }
+    const { policyPointToIndex } = await import('./naf.js');
+    const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
+    const total = history.length;
+
+    for (let i = 0; i < total; i++) {
+      const g = replayHistory(history.slice(0, i));
+      const turn = g.turn;
+      const [topQ, policyLogits] = await player.eval(g);
+
+      // Rank of the played move (lower = better; 0 = top policy choice).
+      // 'swap' moves get rank -1 (not a placement).
+      let rank = -1;
+      const played = history[i];
+      if (played !== 'swap') {
+        const playedIdx = policyPointToIndex(turn, played);
+        const playedLogit = policyLogits[playedIdx];
+        rank = 0;
+        for (let j = 0; j < policyLogits.length; j++) {
+          if (policyLogits[j] > playedLogit) rank++;
+        }
+      }
+
+      self.postMessage({ type: 'eval-game-progress', moveIndex: i, topQ, rank });
+    }
+    self.postMessage({ type: 'eval-game-done', total });
   }
 };
