@@ -4,7 +4,7 @@ Consolidated from `docs/improvements.md`, `docs/lg-planned-features.md`,
 `docs/network-pvp-research.md`, and a feature comparison against
 `github.com/eeichinger/twixtbot-ui` (the desktop Python app).
 
-Last updated: 2026-04-09.
+Last updated: 2026-04-09 (session 3).
 
 ---
 
@@ -196,20 +196,30 @@ Full research in `docs/network-pvp-research.md`. Recommendation: PeerJS + OpenRe
 
 ## Recommended next actions
 
-Based on priority and the constraint that analysis/viz features are mostly zero-cost
-(data already available in the worker):
+All P1 features and most P2 features are shipped. Remaining work by category:
 
-1. **V1 + V2 + V3** — Wire up existing worker output to a small analytics panel.
-   All data already flows from the worker; this is pure UI work. Highest ratio of
-   value to effort in the entire backlog.
+### No retraining needed
 
-2. **B1** — INT8 quantize the ONNX model. One Python call, immediate iOS memory relief.
+1. **A3** — Tree reuse (4-ply + O(N²) fix). Strongest pure-algorithm gain available
+   without new model weights. Pair with A4 (cpuct tuning) and validate with a small
+   arena (100 self-play games).
 
-3. **L1** — "Analyse this position" in replay. The AI worker and board are already
-   there; just need a button that feeds the current replay position to `requestAiMove`.
+2. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
+   low effort, high reliability payoff.
 
-4. **G1 + G2** — Redo and Resign. Both are medium-effort but frequently expected by
-   players coming from other board game apps.
+3. **U3 + U4** — Board label and guideline toggles. Both are simple boolean flags in
+   `BoardUI`; add two settings rows to the existing settings slide-up panel.
 
-5. **A3 + A4** — Tree reuse and cpuct tuning. Strongest pure-algorithm gains without
-   retraining. A4 needs an arena to validate — set that up alongside A3.
+4. **G3** — Bot vs Bot mode. Auto-move both players; useful for demos and strength
+   testing. Moderate effort; reuses existing worker + game loop.
+
+5. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
+   from the worker; draw as an arrow chain on the board canvas. High effort.
+
+### Requires retraining
+
+6. **B7** — Deeper policy head. No architecture change to residual blocks; policy head
+   upgrade only. Moderate effort; export + quantize via existing CI.
+
+7. **B9a** — KataGo global pooling bias. Full architecture change + retrain; high effort
+   but highest expected strength gain of any model improvement.
