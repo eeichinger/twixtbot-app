@@ -74,7 +74,7 @@ export function ptFromString(s: string): Point {
 }
 
 export function ptToString(p: Point): string {
-  return String.fromCharCode(97 + p.x) + (p.y + 1);
+  return String.fromCharCode(65 + p.x) + (p.y + 1);
 }
 
 // -------------------------------------------------------------------------

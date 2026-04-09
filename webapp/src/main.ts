@@ -541,7 +541,7 @@ function updateAnalysisPanel(topQ: number, top3: Top3Move[]): void {
     row.className = 'bar-row';
     const coord = document.createElement('span');
     coord.className = 'bar-coord';
-    coord.textContent = `(${m.x},${m.y})`;
+    coord.textContent = ptToString(m);
     const track = document.createElement('div');
     track.className = 'bar-track';
     const fill = document.createElement('div');
@@ -1625,7 +1625,7 @@ function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
     row.className = 'bar-row';
     const coord = document.createElement('span');
     coord.className = 'bar-coord';
-    coord.textContent = `(${m.x},${m.y})`;
+    coord.textContent = ptToString(m);
     const track = document.createElement('div');
     track.className = 'bar-track';
     const fill = document.createElement('div');
