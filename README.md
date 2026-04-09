@@ -173,15 +173,20 @@ largest TwixT community, so you can study expert games without leaving the app.
 
 ## Attribution
 
-This project builds on [**twixtbot**](https://github.com/BonyJordan/twixtbot) by
-**Jordan Lampe** (MIT License, 2019) — a command-line AI that plays TwixT using a
-self-trained neural network. The original game logic and model weights are Jordan's
-work.
+This project builds on two open-source works:
 
-The web app — TypeScript port, AI engine, offline PWA, board UI, touch controls,
-iOS memory optimisations, Little Golem integration, and all the analysis and
-learning features — was designed and built by
-[**Claude**](https://claude.ai) (Anthropic's AI assistant).
+**[twixtbot](https://github.com/BonyJordan/twixtbot)** by **Jordan Lampe** (MIT License, 2019) —
+the original command-line AI that plays TwixT using a self-trained neural network.
+The game logic and model weights are Jordan's work.
+
+**[twixtbot-ui](https://github.com/stevens68/twixtbot-ui)** by **stevens68** (MIT License, 2021) —
+a desktop GUI for twixtbot that introduced many of the analysis and visualisation features
+this web app implements: policy heatmap, win-probability display, top-move panel, evaluation
+chart, MCTS progress indicator, hint mode, and more.
+
+The web app itself — TypeScript port, PWA shell, canvas board UI, touch controls, iOS memory
+optimisations, Little Golem integration, and all browser-specific plumbing — was designed and
+built by [**Claude**](https://claude.ai) (Anthropic's AI assistant).
 
 ---
 
