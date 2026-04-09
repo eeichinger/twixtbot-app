@@ -196,6 +196,8 @@ export class Game {
   openPegs: [SelectSet, SelectSet]; // [color] → available points
   reachable: [Set<ReachableKey>, Set<ReachableKey>];
   reachableHistory: ReachableKey[][];
+  private redoStack: MoveRecord[] = [];
+  private _inRedo = false;
 
   constructor() {
     this.pegs  = [new Int8Array(SIZE*SIZE), new Int8Array(SIZE*SIZE)];
@@ -240,6 +242,7 @@ export class Game {
   }
 
   play(move: MoveRecord): void {
+    if (!this._inRedo) this.redoStack = [];
     if (move === 'swap') { this._playSwap(); return; }
 
     const { x, y } = move;
@@ -264,7 +267,11 @@ export class Game {
 
   undo(): void {
     const umove = this.history[this.history.length - 1];
-    if (umove === 'swap') { this._undoSwap(); return; }
+    if (umove === 'swap') {
+      this._undoSwap();
+      this.redoStack.push('swap');
+      return;
+    }
 
     const uturn = 1 - this.turn;
     const { x, y } = umove;
@@ -286,7 +293,20 @@ export class Game {
 
     if (x !== 0 && x !== SIZE - 1) this.openPegs[WHITE].add(umove);
     if (y !== 0 && y !== SIZE - 1) this.openPegs[BLACK].add(umove);
+    this.redoStack.push(umove);
   }
+
+  /** Re-apply the most recently undone move. No-op if no undo to redo. */
+  redo(): void {
+    const move = this.redoStack[this.redoStack.length - 1];
+    if (move === undefined) return;
+    this.redoStack.pop();
+    this._inRedo = true;
+    this.play(move);
+    this._inRedo = false;
+  }
+
+  get canRedo(): boolean { return this.redoStack.length > 0; }
 
   clone(): Game {
     const g = new Game();
@@ -297,6 +317,7 @@ export class Game {
     g.openPegs = [this.openPegs[0].clone(), this.openPegs[1].clone()];
     g.reachable = [new Set(this.reachable[0]), new Set(this.reachable[1])];
     g.reachableHistory = this.reachableHistory.map(r => [...r]);
+    // redoStack intentionally not cloned — redo history is a UI concern
     return g;
   }
 

@@ -396,9 +396,7 @@ html, body {
   flex-shrink: 0;
 }
 
-#game-controls button,
-#game-controls #think-time-select,
-#game-controls #strength-select {
+#game-controls button {
   padding: 8px 14px;
   border: 1px solid rgba(100,160,220,0.45);
   border-radius: 2px;
@@ -409,15 +407,59 @@ html, body {
   cursor: pointer;
   transition: background 0.15s;
 }
-#game-controls button:hover,
-#game-controls #think-time-select:hover,
-#game-controls #strength-select:hover   { background: rgba(100,160,220,0.1); }
-#game-controls button:active            { background: rgba(100,160,220,0.2); }
-#game-controls #think-time-select,
-#game-controls #strength-select         { color-scheme: dark; }
-#resign-btn                             { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
-#resign-btn:hover                       { background: rgba(220,80,60,0.12); }
-#resign-btn:active                      { background: rgba(220,80,60,0.22); }
+#game-controls button:hover  { background: rgba(100,160,220,0.1); }
+#game-controls button:active { background: rgba(100,160,220,0.2); }
+#game-controls button:disabled { opacity: 0.35; cursor: default; }
+#game-controls button:disabled:hover { background: transparent; }
+#resign-btn                  { border-color: rgba(220,80,60,0.6); color: rgba(220,120,100,1); }
+#resign-btn:hover            { background: rgba(220,80,60,0.12); }
+#resign-btn:active           { background: rgba(220,80,60,0.22); }
+#settings-btn                { padding: 8px 12px; }
+
+/* Settings slide-up panel */
+#settings-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+#settings-backdrop {
+  flex: 1;
+  background: rgba(0,0,0,0.5);
+}
+#settings-sheet {
+  background: #0f1929;
+  border-top: 1px solid rgba(100,160,220,0.3);
+  border-radius: 12px 12px 0 0;
+  padding: 16px;
+}
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(100,160,220,0.1);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-label {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color: #e8f4fd;
+  letter-spacing: 0.05em;
+}
+#settings-sheet select {
+  padding: 6px 10px;
+  border: 1px solid rgba(100,160,220,0.45);
+  border-radius: 2px;
+  background: transparent;
+  color: #e8f4fd;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85rem;
+  color-scheme: dark;
+  cursor: pointer;
+}
 
 /* Swap button: floating pill overlaid at the bottom of the board */
 #swap-btn {

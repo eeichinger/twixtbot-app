@@ -111,12 +111,27 @@
       </main>
 
       <div id="game-controls">
-        <select id="strength-select" title="Bot strength" class="hidden"></select>
-        <select id="think-time-select" title="AI think time" class="hidden"></select>
         <button id="hint-btn"   title="Let the AI play this move for you" class="hidden">Suggest</button>
         <button id="undo-btn"   title="Undo your last move">Undo</button>
+        <button id="redo-btn"   title="Redo the undone move" disabled>Redo</button>
         <button id="resign-btn" title="Resign this game" class="hidden">Resign</button>
         <button id="export-btn" title="Download game as .tsgf file">Export</button>
+        <button id="settings-btn" title="Settings">⚙</button>
+      </div>
+
+      <!-- Settings slide-up panel -->
+      <div id="settings-panel" class="hidden">
+        <div id="settings-backdrop"></div>
+        <div id="settings-sheet">
+          <div class="settings-row">
+            <label class="settings-label">Strength</label>
+            <select id="strength-select" title="Bot strength"></select>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Think time</label>
+            <select id="think-time-select" title="AI think time"></select>
+          </div>
+        </div>
       </div>
 
       <footer id="game-footer">

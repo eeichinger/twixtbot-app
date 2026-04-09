@@ -239,6 +239,10 @@ const $top3Bars        = document.getElementById('top3-bars')!;
 const $evalSparkline   = document.getElementById('eval-sparkline') as HTMLCanvasElement;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
+const $redoBtn         = document.getElementById('redo-btn') as HTMLButtonElement;
+const $settingsBtn     = document.getElementById('settings-btn')!;
+const $settingsPanel   = document.getElementById('settings-panel')!;
+const $settingsBackdrop = document.getElementById('settings-backdrop')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
 const $strengthSelect  = document.getElementById('strength-select')  as HTMLSelectElement;
 const boardCanvas      = document.getElementById('board-canvas') as HTMLCanvasElement;
@@ -293,12 +297,15 @@ let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
 // UI helpers
 // -------------------------------------------------------------------------
 
-/** Show/hide the think-time and strength selectors. */
+/** Show/hide the settings gear button (only relevant in PvC mode). */
 function syncThinkTimeVisibility(): void {
-  const showThinkTime = gameMode === 'pvc' ||
-    (!gameOver && !aiThinking && isHumanTurn(game.turn, gameMode));
-  $thinkTimeSelect.classList.toggle('hidden', !showThinkTime);
-  $strengthSelect.classList.toggle('hidden', !showThinkTime);
+  const showSettings = gameMode === 'pvc';
+  $settingsBtn.classList.toggle('hidden', !showSettings);
+}
+
+/** Enable/disable the Redo button based on game state. */
+function syncRedoButton(): void {
+  $redoBtn.disabled = gameOver || aiThinking || !game.canRedo;
 }
 
 /** Show the "AI move" button only when a human can meaningfully delegate their turn. */
@@ -568,11 +575,13 @@ function onHumanMove(p: { x: number; y: number }): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -592,11 +601,13 @@ function onHumanSwap(): void {
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();
   } else {
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     requestAiMove();
   }
@@ -645,6 +656,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     updateSwapBtn();
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
     startHeartbeat();  // monitor JS suspension during human turn
   } else {
@@ -660,6 +672,29 @@ function onHintClick(): void {
   requestAiMove();
 }
 
+function onRedoClick(): void {
+  if (gameOver || aiThinking || !game.canRedo) return;
+
+  if (gameMode === 'pvp') {
+    game.redo();
+    board.setGame(game, true);
+    $statusText.textContent = turnStatusText(game.turn, gameMode);
+    updateSwapBtn();
+  } else {
+    // PvC: redo up to 2 moves (AI + human), stopping at first human move
+    // that would trigger a new AI calculation. Re-apply stored moves only.
+    game.redo();  // first undone move (AI's)
+    if (game.canRedo) game.redo();  // second undone move (human's)
+    board.setGame(game, true);
+    $statusText.textContent = turnStatusText(BLACK, gameMode);
+    updateSwapBtn();
+  }
+  syncHintButton();
+  syncResignButton();
+  syncRedoButton();
+  syncThinkTimeVisibility();
+}
+
 function onUndoClick(): void {
   if (gameOver || aiThinking) return;
 
@@ -672,6 +707,7 @@ function onUndoClick(): void {
       updateSwapBtn();
       syncHintButton();
       syncResignButton();
+      syncRedoButton();
       syncThinkTimeVisibility();
     }
   } else {
@@ -699,6 +735,7 @@ function onUndoClick(): void {
     }
     syncHintButton();
     syncResignButton();
+    syncRedoButton();
     syncThinkTimeVisibility();
   }
 }
@@ -788,6 +825,7 @@ function startNewGame(): void {
   $winProbBar.style.opacity = '0';
   $analysisPanel.classList.add('hidden');
   $analysisPanel.classList.remove('expanded');
+  $redoBtn.disabled = true;
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.remove('hidden');
@@ -1241,6 +1279,7 @@ function init(): void {
 
   $hintBtn.addEventListener('click',    onHintClick);
   $undoBtn.addEventListener('click',    onUndoClick);
+  $redoBtn.addEventListener('click',    onRedoClick);
   $resignBtn.addEventListener('click',  onResignClick);
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
@@ -1248,6 +1287,12 @@ function init(): void {
   $analysisToggle.addEventListener('click', () => {
     $analysisPanel.classList.toggle('expanded');
     if ($analysisPanel.classList.contains('expanded')) drawSparkline();
+  });
+  $settingsBtn.addEventListener('click', () => {
+    $settingsPanel.classList.remove('hidden');
+  });
+  $settingsBackdrop.addEventListener('click', () => {
+    $settingsPanel.classList.add('hidden');
   });
 
   // LG Explore button on intro screen
