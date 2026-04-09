@@ -112,7 +112,37 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
 | L4 | Move list panel in replay | P2 | Low | Pending | Expandable scrollable list of moves in algebraic notation with jump-to-position on tap. Designed in `lg-ux-concept.md`. Shares implementation with U1. |
 
-### 6c · Infrastructure / Reliability
+### 6c · Game List Filters (Explore screen)
+
+Both filters operate on the already-fetched `GameSummary[]` array — no new network
+requests. `GameSummary.result` is "win" | "lost" | "draw" (player perspective) and
+`GameSummary.opponent` is the display name, both parsed from the existing HTML scrape.
+
+| ID | Feature | Priority | Effort | Status | Notes |
+|----|---------|----------|--------|--------|-------|
+| L10 | Result filter | P2 | Low | Pending | Chip-row filter above the game list: `[All] [Win] [Loss] [Draw]`. Client-side filter on `result`. Chips are mutually exclusive; "All" resets. Count badge per chip (e.g. "Loss (8)"). |
+| L11 | Opponent filter | P2 | Low | Pending | Dropdown or text filter populated from unique `opponent` values in the loaded list. Combinable with L10 (e.g. "show only losses against TwixtBot"). Resets when a new player is searched. |
+
+**Combined UX sketch:**
+
+```
+┌─────────────────────────────────────┐
+│  Alan Hensel  ·  47 games           │  ← player header
+│  [All ▼] [Win] [Loss] [Draw]        │  ← result chips (L10)
+│  vs: [ any opponent      ▾ ]        │  ← opponent dropdown (L11)
+├─────────────────────────────────────┤
+│  #2546140  vs TwixtBot  ·  31 moves │  Loss
+│  #2501234  vs Peyrol    ·  38 moves │  Win
+│  …                                  │
+└─────────────────────────────────────┘
+```
+
+The opponent dropdown is populated lazily from the current loaded list (no extra fetch).
+If fewer than 2 distinct opponents exist, the dropdown is hidden.
+
+---
+
+### 6d · Infrastructure / Reliability
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
@@ -122,7 +152,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | L8 | Favourite players | P3 | Low | Pending | Star players appear at the top of search results without re-typing. |
 | L9 | "TwixT bot games" shortcut | P3 | Low | Pending | One-tap to search games where TwixtBot (plid=3101) is a player. |
 
-### 6d · LG Correspondence Play (requires auth investigation)
+### 6e · LG Correspondence Play (requires auth investigation)
 
 > **Blocked** pending verification of LG auth/move endpoints. See open items in
 > `docs/lg-planned-features.md`.
