@@ -56,6 +56,22 @@ export function resultMessage(winner: number | null, mode: GameMode): string {
 }
 
 /**
+ * Win-probability bar color and opacity for the status bar underline.
+ *
+ * topQ is from the AI (WHITE / first mover) perspective: +1 = AI certain win,
+ * -1 = human certain win, 0 = even.
+ *
+ * Returns the CSS color and opacity (0–1) for the 3px bar shown under the
+ * status text in PvC mode. The caller hides the bar when topQ is null (no
+ * AI result yet) or in PvP mode.
+ */
+export function winProbBarStyle(topQ: number): { color: string; opacity: number } {
+  const opacity = Math.min(Math.abs(topQ), 1);
+  const color = topQ >= 0 ? '#e74c3c' : '#5dade2';  // red = AI winning, blue = human winning
+  return { color, opacity };
+}
+
+/**
  * TSGF result string when the player whose turn it is resigns.
  *
  * In TSGF/SGF, WHITE is the first mover (written as "B"), so

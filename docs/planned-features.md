@@ -71,7 +71,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 |----|---------|----------|--------|--------|-------|
 | V1 | MCTS progress indicator | P1 | Low | Pending | Worker already sends `{ type: 'ping', iterations }` every 20 trials. Add a trial counter or progress bar to the thinking overlay. Zero new logic needed. |
 | V2 | Top-3 candidate moves display | P1 | Low | Pending | Worker result already includes `topPct`, `topQ`, `trials`. Show a small 3-bar panel (move label + policy %). Present in twixtbot-ui. |
-| V3 | Win probability display | P1 | Low | Pending | Worker result includes `topQ` (value head output, −1..+1). Show as a labelled bar or numeric readout after each AI move. Present in twixtbot-ui. |
+| V3 | Win probability display | P1 | Low | **Done** | Worker result includes `topQ` (value head output, −1..+1). Show as a labelled bar or numeric readout after each AI move. Present in twixtbot-ui. |
 | V4 | Evaluation history chart | P2 | Medium | Pending | Record win-probability after each move; display as a sparkline or bar chart below the board. Requires accumulating per-move values across the game. Present in twixtbot-ui. |
 | V5 | Policy heatmap overlay | P2 | Medium | Pending | On demand, run a single NN forward pass and color each cell by its policy probability (blue→cyan→green gradient). No MCTS needed. Present in twixtbot-ui. |
 | V6 | MCTS best-line visualization | P3 | High | Pending | While the bot is computing, draw the current principal variation on the board. Requires the worker to stream the best line in `ping` messages. Present in twixtbot-ui. |

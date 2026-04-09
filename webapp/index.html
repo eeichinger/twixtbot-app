@@ -90,6 +90,7 @@
       <header id="status-bar">
         <button id="new-game-btn" title="Return to title screen">&#8592;</button>
         <span id="status-text">Your turn (Blue)</span>
+        <div id="win-prob-bar"></div>
       </header>
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
@@ -99,8 +100,9 @@
       <div id="game-controls">
         <select id="strength-select" title="Bot strength" class="hidden"></select>
         <select id="think-time-select" title="AI think time" class="hidden"></select>
-        <button id="hint-btn"  title="Let the AI play this move for you" class="hidden">Suggest</button>
-        <button id="undo-btn"  title="Undo your last move">Undo</button>
+        <button id="hint-btn"   title="Let the AI play this move for you" class="hidden">Suggest</button>
+        <button id="undo-btn"   title="Undo your last move">Undo</button>
+        <button id="resign-btn" title="Resign this game" class="hidden">Resign</button>
         <button id="export-btn" title="Download game as .tsgf file">Export</button>
       </div>
 

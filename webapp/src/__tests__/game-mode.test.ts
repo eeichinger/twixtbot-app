@@ -12,6 +12,7 @@ import {
   turnStatusText,
   resultMessage,
   resignTsgfResult,
+  winProbBarStyle,
 } from '../game-mode.js';
 
 // -------------------------------------------------------------------------
@@ -98,6 +99,32 @@ describe('resultMessage — WHITE wins', () => {
 // -------------------------------------------------------------------------
 // resignTsgfResult
 // -------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------
+// winProbBarStyle
+// -------------------------------------------------------------------------
+
+describe('winProbBarStyle', () => {
+  it('returns red color when AI is winning (topQ > 0)', () => {
+    expect(winProbBarStyle(0.8).color).toBe('#e74c3c');
+  });
+
+  it('returns blue color when human is winning (topQ < 0)', () => {
+    expect(winProbBarStyle(-0.7).color).toBe('#5dade2');
+  });
+
+  it('returns red color at topQ === 0 (even — AI perspective default)', () => {
+    expect(winProbBarStyle(0).color).toBe('#e74c3c');
+  });
+
+  it('opacity equals |topQ| clamped to 1', () => {
+    expect(winProbBarStyle(0.6).opacity).toBeCloseTo(0.6);
+    expect(winProbBarStyle(-0.4).opacity).toBeCloseTo(0.4);
+    expect(winProbBarStyle(0).opacity).toBeCloseTo(0);
+    expect(winProbBarStyle(1.5).opacity).toBeCloseTo(1);   // clamped
+    expect(winProbBarStyle(-1.5).opacity).toBeCloseTo(1);  // clamped
+  });
+});
 
 describe('resignTsgfResult', () => {
   // In TSGF, WHITE = first mover = written as "B" (Black in SGF notation).

@@ -13,7 +13,7 @@ import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
-  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult,
+  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle,
   type GameMode,
 } from './game-mode.js';
 import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, type GameSummary, type PlayerResult } from './lg-api.js';
@@ -230,6 +230,7 @@ const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $resignBtn       = document.getElementById('resign-btn')!;
+const $winProbBar      = document.getElementById('win-prob-bar')!;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
@@ -325,6 +326,9 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       if (msg.trials != null) {
         const qSign = (msg.topQ as number) >= 0 ? '+' : '';
         diagLog(`worker-result ${moveStr} | trials=${msg.trials} topPct=${(msg.topPct as number).toFixed(1)}% topQ=${qSign}${(msg.topQ as number).toFixed(3)} elapsed=${msg.elapsed}ms [budget=${msg.timeLimitMs}ms cap=${msg.maxTrials} temp=${msg.temperature}]`);
+        const barStyle = winProbBarStyle(msg.topQ as number);
+        $winProbBar.style.backgroundColor = barStyle.color;
+        $winProbBar.style.opacity = String(barStyle.opacity);
       } else {
         diagLog(`worker-result ${moveStr}`);
       }
@@ -669,6 +673,7 @@ function startNewGame(): void {
   aiThinking  = false;
   tsgfResult  = '?';
   game = new Game();
+  $winProbBar.style.opacity = '0';
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.remove('hidden');

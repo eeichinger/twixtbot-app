@@ -244,6 +244,7 @@ html, body {
 
 /* Header */
 #status-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -252,6 +253,18 @@ html, body {
   background: #0f1929;
   border-bottom: 1px solid rgba(100,160,220,0.2);
   flex-shrink: 0;
+}
+
+/* Win-probability bar: 3px strip at the bottom of the status header */
+#win-prob-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0;
+  transition: background-color 0.4s, opacity 0.4s;
 }
 
 #status-text {
