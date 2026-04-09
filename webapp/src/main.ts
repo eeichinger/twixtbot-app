@@ -8,8 +8,8 @@
  *   - Game mode selection (PvC vs PvP)
  */
 
-import { Game, pt, WHITE, BLACK } from './twixt.js';
-import type { MoveRecord } from './twixt.js';
+import { Game, pt, WHITE, BLACK, ptToString } from './twixt.js';
+import type { MoveRecord, Point } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
@@ -269,6 +269,14 @@ const replayCanvas     = document.getElementById('replay-canvas') as HTMLCanvasE
 const $lgPasteInput    = document.getElementById('lg-paste-input') as HTMLTextAreaElement;
 const $lgFileInput     = document.getElementById('lg-file-input') as HTMLInputElement;
 
+// Move list panels
+const $moveListPanel   = document.getElementById('move-list-panel')!;
+const $moveListLabel   = document.getElementById('move-list-label')!;
+const $moveListBody    = document.getElementById('move-list-body')!;
+const $replayMoveListPanel  = document.getElementById('replay-move-list-panel')!;
+const $replayMoveListLabel  = document.getElementById('replay-move-list-label')!;
+const $replayMoveListBody   = document.getElementById('replay-move-list-body')!;
+
 // -------------------------------------------------------------------------
 // State
 // -------------------------------------------------------------------------
@@ -318,6 +326,72 @@ function syncHintButton(): void {
 function syncResignButton(): void {
   const show = !gameOver && !aiThinking && game.history.length > 0;
   $resignBtn.classList.toggle('hidden', !show);
+}
+
+// -------------------------------------------------------------------------
+// Move list (U1 / L4) — shared rendering
+// -------------------------------------------------------------------------
+
+function moveToStr(m: MoveRecord): string {
+  return m === 'swap' ? 'swap' : ptToString(m as Point);
+}
+
+/**
+ * Render a numbered move list into `container`.
+ * Moves are paired into rounds: WHITE (even indices) left, BLACK (odd) right.
+ * `currentIndex` is the 0-based half-move index to highlight; -1 = none.
+ * If `onHalfMoveClick` is provided, moves become clickable links.
+ * The highlighted row is scrolled into view after rendering.
+ */
+function renderMoveList(
+  container: HTMLElement,
+  moves: MoveRecord[],
+  currentIndex: number,
+  onHalfMoveClick?: (index: number) => void,
+): void {
+  container.innerHTML = '';
+  const rounds = Math.ceil(moves.length / 2);
+  let highlightedRow: HTMLElement | null = null;
+  for (let r = 0; r < rounds; r++) {
+    const row = document.createElement('div');
+    row.className = 'ml-row';
+
+    const num = document.createElement('span');
+    num.className = 'ml-num';
+    num.textContent = `${r + 1}.`;
+    row.appendChild(num);
+
+    for (let side = 0; side < 2; side++) {
+      const halfIdx = 2 * r + side;
+      if (halfIdx >= moves.length) break;
+      const span = document.createElement('span');
+      span.className = 'ml-move' +
+        (halfIdx === currentIndex ? ' ml-current' : '') +
+        (onHalfMoveClick ? ' ml-clickable' : '');
+      span.textContent = moveToStr(moves[halfIdx]);
+      if (onHalfMoveClick) {
+        span.addEventListener('click', () => onHalfMoveClick(halfIdx));
+      }
+      row.appendChild(span);
+      if (halfIdx === currentIndex) highlightedRow = row;
+    }
+
+    container.appendChild(row);
+  }
+  if (highlightedRow) highlightedRow.scrollIntoView({ block: 'nearest' });
+}
+
+function syncMoveList(): void {
+  const moves = game.history;
+  if (moves.length === 0) {
+    $moveListPanel.classList.add('hidden');
+    return;
+  }
+  $moveListPanel.classList.remove('hidden');
+  $moveListLabel.textContent = `Moves (${moves.length})`;
+  if ($moveListPanel.classList.contains('expanded')) {
+    renderMoveList($moveListBody, moves, moves.length - 1);
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -583,6 +657,7 @@ function onHumanMove(p: { x: number; y: number }): void {
     return;
   }
 
+  syncMoveList();
   if (gameMode === 'pvp') {
     // Other human player takes over.
     board.setEnabled(true);
@@ -668,6 +743,7 @@ function onAiMove(moveMsg: MoveMsg): void {
     diagLog('worker-terminated (freeing memory for human turn)');
     $statusText.textContent = turnStatusText(game.turn, gameMode);
     updateSwapBtn();
+    syncMoveList();
     syncHintButton();
     syncResignButton();
     syncRedoButton();
@@ -703,6 +779,7 @@ function onRedoClick(): void {
     $statusText.textContent = turnStatusText(BLACK, gameMode);
     updateSwapBtn();
   }
+  syncMoveList();
   syncHintButton();
   syncResignButton();
   syncRedoButton();
@@ -727,6 +804,7 @@ function onUndoClick(): void {
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(game.turn, gameMode);
       updateSwapBtn();
+      syncMoveList();
       syncHintButton();
       syncResignButton();
       syncRedoButton();
@@ -755,6 +833,7 @@ function onUndoClick(): void {
       $analysisPanel.classList.add('hidden');
       $analysisPanel.classList.remove('expanded');
     }
+    syncMoveList();
     syncHintButton();
     syncResignButton();
     syncRedoButton();
@@ -847,6 +926,9 @@ function startNewGame(): void {
   $winProbBar.style.opacity = '0';
   $analysisPanel.classList.add('hidden');
   $analysisPanel.classList.remove('expanded');
+  $moveListPanel.classList.add('hidden');
+  $moveListPanel.classList.remove('expanded');
+  $moveListBody.innerHTML = '';
   $redoBtn.disabled = true;
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
@@ -1213,6 +1295,11 @@ function openReplayForParsedGame(parsed: ParsedGame): void {
   $replayTitle.textContent = title;
   diagLog(`lg-replay-open id=${parsed.id} moves=${parsed.moves.length}`);
 
+  // Reset move list panel for new game.
+  $replayMoveListPanel.classList.remove('expanded');
+  $replayMoveListBody.innerHTML = '';
+  $replayMoveListLabel.textContent = `Moves (${parsed.moves.length})`;
+
   hideAllScreens();
   $replayScreen.classList.remove('hidden');
 
@@ -1241,6 +1328,17 @@ function replayShowAtIndex(index: number): void {
   $replayAnalysisPanel.classList.add('hidden');
   $replayAnalyseBtn.disabled = false;
   $replayAnalyseBtn.textContent = 'Analyse';
+
+  // Refresh move list label and body (if expanded).
+  $replayMoveListLabel.textContent = `Moves (${total})`;
+  if ($replayMoveListPanel.classList.contains('expanded')) {
+    renderMoveList(
+      $replayMoveListBody,
+      replayParsedGame.moves,
+      replayMoveIndex - 1,
+      (i) => replayShowAtIndex(i + 1),
+    );
+  }
 }
 
 function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
@@ -1378,6 +1476,27 @@ function init(): void {
   $analysisToggle.addEventListener('click', () => {
     $analysisPanel.classList.toggle('expanded');
     if ($analysisPanel.classList.contains('expanded')) drawSparkline();
+  });
+
+  // Move list toggle (game screen U1)
+  document.getElementById('move-list-toggle')?.addEventListener('click', () => {
+    $moveListPanel.classList.toggle('expanded');
+    if ($moveListPanel.classList.contains('expanded')) {
+      renderMoveList($moveListBody, game.history, game.history.length - 1);
+    }
+  });
+
+  // Move list toggle (replay screen L4)
+  document.getElementById('replay-move-list-toggle')?.addEventListener('click', () => {
+    $replayMoveListPanel.classList.toggle('expanded');
+    if ($replayMoveListPanel.classList.contains('expanded') && replayParsedGame) {
+      renderMoveList(
+        $replayMoveListBody,
+        replayParsedGame.moves,
+        replayMoveIndex - 1,
+        (i) => replayShowAtIndex(i + 1),
+      );
+    }
   });
   $settingsBtn.addEventListener('click', () => {
     $settingsPanel.classList.remove('hidden');

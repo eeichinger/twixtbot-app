@@ -105,6 +105,15 @@
         </div>
       </div>
 
+      <!-- Move list panel (U1) — collapsible, hidden until first move -->
+      <div id="move-list-panel" class="hidden">
+        <button id="move-list-toggle" class="move-list-header">
+          <span class="analysis-icon">▾</span>
+          <span id="move-list-label" class="move-list-label">Moves</span>
+        </button>
+        <div id="move-list-body" class="move-list-body"></div>
+      </div>
+
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
         <button id="swap-btn" class="hidden" title="Swap sides: take the AI's first peg and play as White">⇄ Swap</button>
@@ -207,6 +216,15 @@
           <div id="replay-top3-bars" class="top3-bars"></div>
         </div>
       </div>
+      <!-- Move list panel (L4) — collapsible, always present in replay -->
+      <div id="replay-move-list-panel">
+        <button id="replay-move-list-toggle" class="move-list-header">
+          <span class="analysis-icon">▾</span>
+          <span id="replay-move-list-label" class="move-list-label">Moves</span>
+        </button>
+        <div id="replay-move-list-body" class="move-list-body"></div>
+      </div>
+
       <footer id="replay-controls">
         <button id="replay-first-btn" title="First move">&#124;&#9664;</button>
         <button id="replay-prev-btn"  title="Previous move">&#9664;</button>

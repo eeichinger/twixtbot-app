@@ -93,7 +93,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| U1 | Move list display | P2 | Low | Pending | Scrollable numbered move notation panel (e.g. `1. h5  2. q12 …`) with current move highlighted. History is already tracked internally. Present in twixtbot-ui. Also needed for the replay viewer's planned move list (see L4). |
+| U1 | Move list display | P2 | Low | **Done** | Collapsible panel (hidden until first move). Shared `renderMoveList()` function: paired rounds (WHITE left, BLACK right), current half-move highlighted, auto-scroll. |
 | U2 | Coordinate tooltip on hover/drag | P3 | Low | Pending | Show the cell coordinate (e.g. "h5") near the cursor/finger while hovering or dragging. Present in twixtbot-ui. |
 | U3 | Show/hide board labels toggle | P3 | Low | Pending | Allow hiding the column/row letter labels. Present in twixtbot-ui. |
 | U4 | Show/hide guidelines toggle | P3 | Low | Pending | Allow hiding the knight-move guide lines. Present in twixtbot-ui. |
@@ -123,7 +123,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | L1 | "Analyse this position" button in replay | P1 | Low | **Done** | Analyse button in replay header; panel shows win-prob + top-3 bars below board. Reuses worker; `replayAnalysisMode` flag gates result handler. Panel clears on move navigation. |
 | L2 | Move quality overlay | P2 | Medium | Pending | For each played move, compare to AI's top choice — colour the move dot green/yellow/red based on policy rank. Requires inference on every position. |
 | L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
-| L4 | Move list panel in replay | P2 | Low | Pending | Expandable scrollable list of moves in algebraic notation with jump-to-position on tap. Designed in `lg-ux-concept.md`. Shares implementation with U1. |
+| L4 | Move list panel in replay | P2 | Low | **Done** | Same `renderMoveList()` as U1. Replay screen: always present, clickable rows jump to that position via `replayShowAtIndex(i+1)`. Refreshes on every navigation. |
 
 ### LG · Game List Filters (Explore screen)
 
