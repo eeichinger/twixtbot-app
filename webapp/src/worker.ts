@@ -184,14 +184,14 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }
 
-      // Heartbeat: every 2s send a ping to main thread so it can confirm
-      // the worker is still alive. Pings stop when MCTS finishes or is killed.
+      // Heartbeat: every 1s send a ping to main thread so it can show elapsed
+      // time in the thinking overlay. Pings stop when MCTS finishes or is killed.
       let pingCount = 0;
       const moveStart = Date.now();
       const pingId = setInterval(() => {
         pingCount++;
-        self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, iterations: pingCount });
-      }, 2000);
+        self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, timeLimitMs, iterations: pingCount });
+      }, 1000);
 
       /** Summarise visit-count distribution for diagnostics and the analysis panel.
        *  trials    = total MCTS visits at root

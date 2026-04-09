@@ -582,6 +582,13 @@ html, body {
   text-transform: uppercase;
   pointer-events: none;
 }
+.thinking-progress {
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.75rem;
+  color: rgba(100,160,220,0.7);
+  letter-spacing: 0.05em;
+  min-height: 1em;
+}
 
 /* Game-over overlay */
 #gameover-overlay {

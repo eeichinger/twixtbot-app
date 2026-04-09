@@ -225,7 +225,8 @@ const $introScreen     = document.getElementById('intro-screen')!;
 const $loadingScreen   = document.getElementById('loading-screen')!;
 const $gameScreen      = document.getElementById('game-screen')!;
 const $statusText      = document.getElementById('status-text')!;
-const $thinkingOverlay = document.getElementById('thinking-overlay')!;
+const $thinkingOverlay  = document.getElementById('thinking-overlay')!;
+const $thinkingProgress = document.getElementById('thinking-progress')!;
 const $loadingMsg      = document.getElementById('loading-msg')!;
 const $hintBtn         = document.getElementById('hint-btn')!;
 const $swapBtn         = document.getElementById('swap-btn')!;
@@ -454,6 +455,9 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       }
     } else if (msg.type === 'ping') {
       diagLog(`worker-ping elapsed=${msg.elapsed}ms iters=${msg.iterations}`);
+      const sec = Math.round((msg.elapsed as number) / 1000);
+      const budget = msg.timeLimitMs != null ? ` / ${Math.round((msg.timeLimitMs as number) / 1000)}s` : '';
+      $thinkingProgress.textContent = `${sec}s${budget}`;
     }
   };
 
@@ -887,6 +891,7 @@ function setThinking(thinking: boolean): void {
     $thinkTimeSelect.classList.remove('hidden'); // keep visible so user can adjust mid-think
   } else {
     $thinkingOverlay.classList.add('hidden');
+    $thinkingProgress.textContent = '';
     if (!gameOver) board.setEnabled(true);
     // syncHintButton() / syncThinkTimeVisibility() called by whoever transitions out of thinking.
   }
