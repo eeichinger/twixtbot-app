@@ -117,8 +117,6 @@ def main() -> None:
         model_input=args.input,
         model_output=tmp_out,
         weight_type=QuantType.QInt8,
-        # optimize_model=True keeps BN fused from the export step
-        optimize_model=True,
     )
 
     if overwriting:
