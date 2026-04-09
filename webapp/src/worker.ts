@@ -71,7 +71,7 @@ self.onmessage = async (e: MessageEvent) => {
       return;
     }
     isProcessing = true;
-    const { policyIndexToPoint } = await import('./naf.js');
+    const { policyIndexToPoint, top3FromScores } = await import('./naf.js');
 
     /**
      * Pick a move from a Float64Array of scores (visit counts or priors).
@@ -193,12 +193,13 @@ self.onmessage = async (e: MessageEvent) => {
         self.postMessage({ type: 'ping', elapsed: Date.now() - moveStart, iterations: pingCount });
       }, 2000);
 
-      /** Summarise visit-count distribution for diagnostics.
+      /** Summarise visit-count distribution for diagnostics and the analysis panel.
        *  trials    = total MCTS visits at root
        *  topPct    = % of visits on the most-visited move (search concentration)
        *  topQ      = Q of that move from the bot's perspective (-1 loss … +1 win)
+       *  top3      = up to 3 most-visited moves with coordinates, visit%, and Q
        */
-      function gatherStats(scores: Float64Array): { trials: number; topPct: number; topQ: number } {
+      function gatherStats(scores: Float64Array, turn: number): { trials: number; topPct: number; topQ: number; top3: ReturnType<typeof top3FromScores> } {
         let trials = 0, topN = 0, topIdx = 0;
         for (let i = 0; i < scores.length; i++) {
           trials += scores[i];
@@ -206,7 +207,8 @@ self.onmessage = async (e: MessageEvent) => {
         }
         const topPct = trials > 0 ? (topN / trials) * 100 : 0;
         const topQ   = mcts?.root ? mcts.root.Q[topIdx] : 0;
-        return { trials, topPct, topQ };
+        const top3   = top3FromScores(scores, turn, mcts?.root?.Q ?? null);
+        return { trials, topPct, topQ, top3 };
       }
 
       // Hard-deadline timer: fires between await yields if the internal
@@ -224,7 +226,7 @@ self.onmessage = async (e: MessageEvent) => {
           if (totalN === 0 && root.lmNonzero) {
             for (const i of root.lmNonzero) scores[i] = root.P[i];
           }
-          const stats = gatherStats(scores);
+          const stats = gatherStats(scores, turn);
           const elapsed = Date.now() - moveStart;
           self.postMessage({ type: 'result', move: pickMoveWithTemperature(scores, turn, temperature), ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {
@@ -254,7 +256,7 @@ self.onmessage = async (e: MessageEvent) => {
         const elapsed = Date.now() - moveStart;
         let moveMsg: MoveMsg;
         if (result instanceof Float64Array) {
-          const stats = gatherStats(result);
+          const stats = gatherStats(result, turn);
           moveMsg = pickMoveWithTemperature(result, turn, temperature);
           self.postMessage({ type: 'result', move: moveMsg, ...stats, elapsed, timeLimitMs, maxTrials, temperature });
         } else {

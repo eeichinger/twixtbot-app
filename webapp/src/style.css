@@ -267,6 +267,99 @@ html, body {
   transition: background-color 0.4s, opacity 0.4s;
 }
 
+/* Analysis panel (V2) — collapsible strip below the status bar */
+#analysis-panel {
+  background: #0a1525;
+  border-bottom: 1px solid rgba(100,160,220,0.15);
+  flex-shrink: 0;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 14px;
+  height: 28px;
+  background: none;
+  border: none;
+  color: #e8f4fd;
+  cursor: pointer;
+  text-align: left;
+}
+.analysis-header:hover { background: rgba(100,160,220,0.06); }
+
+.analysis-icon {
+  font-size: 10px;
+  color: #6b8aad;
+  display: inline-block;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+#analysis-panel.expanded .analysis-icon { transform: rotate(180deg); }
+
+#win-prob-text {
+  font-family: 'Courier Prime', monospace;
+  font-size: 12px;
+  color: #ccc;
+  flex: 1;
+}
+
+.analysis-hint {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #3a5070;
+  letter-spacing: 0.05em;
+}
+
+.analysis-body {
+  display: none;
+  padding: 4px 14px 8px;
+}
+#analysis-panel.expanded .analysis-body { display: block; }
+
+.top3-bars { margin-bottom: 6px; }
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+.bar-coord {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #6b8aad;
+  min-width: 46px;
+}
+.bar-track {
+  flex: 1;
+  height: 6px;
+  background: #1a3050;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #5dade2;
+  transition: width 0.3s ease;
+}
+.bar-fill.ai-winning { background: #e74c3c; }
+.bar-pct {
+  font-family: 'Courier Prime', monospace;
+  font-size: 10px;
+  color: #6b8aad;
+  min-width: 32px;
+  text-align: right;
+}
+
+.eval-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+
 #status-text {
   flex: 1;
   font-family: 'Courier Prime', monospace;

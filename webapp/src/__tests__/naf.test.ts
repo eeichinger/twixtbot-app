@@ -13,6 +13,7 @@ import {
   policyPointToIndex,
   legalMovePolicyArray,
   threeToOne,
+  top3FromScores,
 } from '../naf.js';
 
 const NUM_MOVES = SIZE * (SIZE - 2); // 528
@@ -151,6 +152,85 @@ describe('legalMovePolicyArray', () => {
 // -------------------------------------------------------------------------
 // threeToOne
 // -------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------
+// top3FromScores
+// -------------------------------------------------------------------------
+
+describe('top3FromScores', () => {
+  const NUM_MOVES = SIZE * (SIZE - 2); // 528
+
+  it('returns empty array when all scores are zero', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    expect(top3FromScores(scores, WHITE, null)).toHaveLength(0);
+  });
+
+  it('returns at most 3 entries even when many moves are visited', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    for (let i = 0; i < NUM_MOVES; i++) scores[i] = i + 1;  // all non-zero
+    expect(top3FromScores(scores, WHITE, null)).toHaveLength(3);
+  });
+
+  it('sorts entries by visit count descending', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[0] = 10;
+    scores[1] = 30;
+    scores[2] = 20;
+    const result = top3FromScores(scores, WHITE, null);
+    expect(result[0].pct).toBeGreaterThan(result[1].pct);
+    expect(result[1].pct).toBeGreaterThan(result[2].pct);
+  });
+
+  it('pct values sum to approximately 100 when exactly 3 moves are visited', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[0] = 50;
+    scores[1] = 30;
+    scores[2] = 20;
+    const result = top3FromScores(scores, WHITE, null);
+    const total = result.reduce((s, m) => s + m.pct, 0);
+    expect(total).toBeCloseTo(100);
+  });
+
+  it('maps index to correct (x,y) for WHITE', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[0] = 100;  // WHITE: index 0 → (1, 0)
+    const result = top3FromScores(scores, WHITE, null);
+    expect(result[0].x).toBe(1);
+    expect(result[0].y).toBe(0);
+  });
+
+  it('maps index to correct (x,y) for BLACK', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[0] = 100;  // BLACK: index 0 → (0, 1)
+    const result = top3FromScores(scores, BLACK, null);
+    expect(result[0].x).toBe(0);
+    expect(result[0].y).toBe(1);
+  });
+
+  it('reads Q values from qValues array when provided', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[5] = 100;
+    const qValues = new Float64Array(NUM_MOVES);
+    qValues[5] = 0.75;
+    const result = top3FromScores(scores, WHITE, qValues);
+    expect(result[0].q).toBeCloseTo(0.75);
+  });
+
+  it('returns q=0 when qValues is null', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[0] = 100;
+    const result = top3FromScores(scores, WHITE, null);
+    expect(result[0].q).toBe(0);
+  });
+
+  it('returns only moves with > 0 visits', () => {
+    const scores = new Float64Array(NUM_MOVES);
+    scores[10] = 5;
+    scores[20] = 3;
+    const result = top3FromScores(scores, WHITE, null);
+    expect(result).toHaveLength(2);
+  });
+});
 
 describe('threeToOne', () => {
   it('equal logits → score of 0', () => {

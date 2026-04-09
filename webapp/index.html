@@ -92,6 +92,19 @@
         <span id="status-text">Your turn (Blue)</span>
         <div id="win-prob-bar"></div>
       </header>
+      <!-- Analysis panel: shown after each AI move, collapsible -->
+      <div id="analysis-panel" class="hidden">
+        <button id="analysis-toggle" class="analysis-header">
+          <span class="analysis-icon">▾</span>
+          <span id="win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </button>
+        <div id="analysis-body" class="analysis-body">
+          <div id="top3-bars" class="top3-bars"></div>
+          <canvas id="eval-sparkline" class="eval-sparkline"></canvas>
+        </div>
+      </div>
+
       <main id="board-container">
         <canvas id="board-canvas"></canvas>
         <button id="swap-btn" class="hidden" title="Swap sides: take the AI's first peg and play as White">⇄ Swap</button>

@@ -13,6 +13,7 @@ import {
   resultMessage,
   resignTsgfResult,
   winProbBarStyle,
+  formatWinProb,
 } from '../game-mode.js';
 
 // -------------------------------------------------------------------------
@@ -123,6 +124,34 @@ describe('winProbBarStyle', () => {
     expect(winProbBarStyle(0).opacity).toBeCloseTo(0);
     expect(winProbBarStyle(1.5).opacity).toBeCloseTo(1);   // clamped
     expect(winProbBarStyle(-1.5).opacity).toBeCloseTo(1);  // clamped
+  });
+});
+
+// -------------------------------------------------------------------------
+// formatWinProb
+// -------------------------------------------------------------------------
+
+describe('formatWinProb', () => {
+  it('returns "AI X%" when topQ >= 0 (AI is winning)', () => {
+    expect(formatWinProb(0.73)).toBe('AI 73%');
+  });
+
+  it('returns "You X%" when topQ < 0 (human is winning)', () => {
+    expect(formatWinProb(-0.45)).toBe('You 45%');
+  });
+
+  it('returns "AI 0%" at topQ=0 (even)', () => {
+    expect(formatWinProb(0)).toBe('AI 0%');
+  });
+
+  it('clamps to 100% for extreme values', () => {
+    expect(formatWinProb(1.5)).toBe('AI 100%');
+    expect(formatWinProb(-1.5)).toBe('You 100%');
+  });
+
+  it('rounds to nearest percent', () => {
+    expect(formatWinProb(0.676)).toBe('AI 68%');
+    expect(formatWinProb(-0.674)).toBe('You 67%');
   });
 });
 

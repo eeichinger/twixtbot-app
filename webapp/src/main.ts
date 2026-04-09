@@ -13,9 +13,10 @@ import type { MoveRecord } from './twixt.js';
 import { BoardUI } from './ui.js';
 import {
   loadGameMode, saveGameMode,
-  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle,
+  isHumanTurn, turnStatusText, resultMessage, resignTsgfResult, winProbBarStyle, formatWinProb,
   type GameMode,
 } from './game-mode.js';
+import type { Top3Move } from './naf.js';
 import { fetchGame, fetchGameRaw, fetchPlayerGamesByPlid, searchPlayers, filterGameSummaries, type GameSummary, type PlayerResult, type ResultFilter } from './lg-api.js';
 import { parseTSGF, serializeTSGF, formatResult, type ParsedGame } from './lg-sgf.js';
 
@@ -231,6 +232,11 @@ const $swapBtn         = document.getElementById('swap-btn')!;
 const $undoBtn         = document.getElementById('undo-btn')!;
 const $resignBtn       = document.getElementById('resign-btn')!;
 const $winProbBar      = document.getElementById('win-prob-bar')!;
+const $analysisPanel   = document.getElementById('analysis-panel')!;
+const $analysisToggle  = document.getElementById('analysis-toggle')!;
+const $winProbText     = document.getElementById('win-prob-text')!;
+const $top3Bars        = document.getElementById('top3-bars')!;
+const $evalSparkline   = document.getElementById('eval-sparkline') as HTMLCanvasElement;
 const $newGameBtn      = document.getElementById('new-game-btn')!;
 const $exportBtn       = document.getElementById('export-btn')!;
 const $thinkTimeSelect = document.getElementById('think-time-select') as HTMLSelectElement;
@@ -278,6 +284,11 @@ let tsgfResult = '?';
 let aiMoveTimer: ReturnType<typeof setTimeout> | null = null;
 let gameMode: GameMode = loadGameMode();
 
+/** Per-move AI win-probability history (topQ after each AI move) for the sparkline. */
+let evalHistory: number[] = [];
+/** Top-3 move data from the most recent AI result, applied in onAiMove(). */
+let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
+
 // -------------------------------------------------------------------------
 // UI helpers
 // -------------------------------------------------------------------------
@@ -300,6 +311,88 @@ function syncHintButton(): void {
 function syncResignButton(): void {
   const show = !gameOver && !aiThinking && game.history.length > 0;
   $resignBtn.classList.toggle('hidden', !show);
+}
+
+// -------------------------------------------------------------------------
+// Analysis panel (V2 — top-3 moves + win prob + eval sparkline)
+// -------------------------------------------------------------------------
+
+function updateAnalysisPanel(topQ: number, top3: Top3Move[]): void {
+  $winProbText.textContent = formatWinProb(topQ);
+  $analysisPanel.classList.remove('hidden');
+
+  // Top-3 bars
+  $top3Bars.innerHTML = '';
+  for (const m of top3) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const coord = document.createElement('span');
+    coord.className = 'bar-coord';
+    coord.textContent = `(${m.x},${m.y})`;
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill' + (m.q >= 0 ? ' ai-winning' : '');
+    fill.style.width = `${m.pct.toFixed(1)}%`;
+    track.appendChild(fill);
+    const pct = document.createElement('span');
+    pct.className = 'bar-pct';
+    pct.textContent = `${m.pct.toFixed(0)}%`;
+    row.appendChild(coord);
+    row.appendChild(track);
+    row.appendChild(pct);
+    $top3Bars.appendChild(row);
+  }
+
+  drawSparkline();
+}
+
+function drawSparkline(): void {
+  const canvas = $evalSparkline;
+  // Size canvas to its CSS display size
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(rect.width || 200, 200);
+  const h = 28;
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  // Centre line
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, mid);
+  ctx.lineTo(w, mid);
+  ctx.stroke();
+
+  if (evalHistory.length < 1) return;
+
+  // Fill area under the curve
+  const points = evalHistory.map((q, i) => ({
+    x: evalHistory.length === 1 ? w / 2 : (i / (evalHistory.length - 1)) * w,
+    y: mid - q * (mid - 2),   // q in [-1,1] → y in [h-2, 2]
+  }));
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, mid);
+  for (const pt of points) ctx.lineTo(pt.x, pt.y);
+  ctx.lineTo(points[points.length - 1].x, mid);
+  ctx.closePath();
+  // Use AI colour (red) when AI winning, human colour (blue) when human winning
+  const lastQ = evalHistory[evalHistory.length - 1];
+  ctx.fillStyle = lastQ >= 0 ? 'rgba(231,76,60,0.2)' : 'rgba(93,173,226,0.2)';
+  ctx.fill();
+
+  // Line on top
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.strokeStyle = lastQ >= 0 ? '#e74c3c' : '#5dade2';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 }
 
 // -------------------------------------------------------------------------
@@ -329,8 +422,10 @@ function initWorker(onReady: () => void = onWorkerReady): void {
         const barStyle = winProbBarStyle(msg.topQ as number);
         $winProbBar.style.backgroundColor = barStyle.color;
         $winProbBar.style.opacity = String(barStyle.opacity);
+        pendingAnalysis = { topQ: msg.topQ as number, top3: (msg.top3 as Top3Move[]) ?? [] };
       } else {
         diagLog(`worker-result ${moveStr}`);
+        pendingAnalysis = null;
       }
       clearAiMoveTimer();
       onAiMove(msg.move as MoveMsg);
@@ -517,6 +612,13 @@ function onAiMove(moveMsg: MoveMsg): void {
   const movedColor = game.turn;
   game.play(move);
 
+  // Apply analysis data from the pending result (if MCTS ran)
+  if (pendingAnalysis) {
+    evalHistory.push(pendingAnalysis.topQ);
+    updateAnalysisPanel(pendingAnalysis.topQ, pendingAnalysis.top3);
+    pendingAnalysis = null;
+  }
+
   if (game.justWon()) {
     board.setGame(game, false);
     tsgfResult = movedColor === WHITE ? 'B+' : 'W+';  // WHITE = first mover = TSGF Black
@@ -578,6 +680,7 @@ function onUndoClick(): void {
     if (game.history.length >= 2) {
       game.undo();
       game.undo();
+      evalHistory.pop();  // remove the AI move's eval entry
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
       updateSwapBtn();
@@ -586,6 +689,13 @@ function onUndoClick(): void {
       board.setGame(game, true);
       $statusText.textContent = turnStatusText(BLACK, gameMode);
       updateSwapBtn();
+    }
+    // Refresh analysis panel (redraw sparkline without the removed entry)
+    if (evalHistory.length > 0) {
+      drawSparkline();
+    } else {
+      $analysisPanel.classList.add('hidden');
+      $analysisPanel.classList.remove('expanded');
     }
     syncHintButton();
     syncResignButton();
@@ -673,7 +783,11 @@ function startNewGame(): void {
   aiThinking  = false;
   tsgfResult  = '?';
   game = new Game();
+  evalHistory = [];
+  pendingAnalysis = null;
   $winProbBar.style.opacity = '0';
+  $analysisPanel.classList.add('hidden');
+  $analysisPanel.classList.remove('expanded');
   $thinkingOverlay.classList.add('hidden');
   $swapBtn.classList.add('hidden');
   $undoBtn.classList.remove('hidden');
@@ -1131,6 +1245,10 @@ function init(): void {
   $swapBtn.addEventListener('click',    onHumanSwap);
   $newGameBtn.addEventListener('click', () => showIntro());
   $exportBtn.addEventListener('click',  onExportClick);
+  $analysisToggle.addEventListener('click', () => {
+    $analysisPanel.classList.toggle('expanded');
+    if ($analysisPanel.classList.contains('expanded')) drawSparkline();
+  });
 
   // LG Explore button on intro screen
   document.getElementById('lg-explore-btn')?.addEventListener('click', () => {
