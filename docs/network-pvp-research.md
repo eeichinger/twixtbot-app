@@ -4,6 +4,9 @@
 **Context:** Exploring how two players, each with the PWA installed on their own phone or
 tablet, could play TwixT against each other peer-to-peer — without a dedicated server.
 
+> **Feature status and priority tracked in `docs/planned-features.md` (section 7, items R1–R4).
+> This document is the research reference; do not duplicate status here.**
+
 ---
 
 ## Requirements & constraints

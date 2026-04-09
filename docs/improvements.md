@@ -1,21 +1,10 @@
-# TwixT AI Improvement Roadmap
+# TwixT AI Improvement — Technical Reference
 
 Generated: 2026-04-05. Based on analysis of the current webapp MCTS + ONNX stack.
 
----
-
-## Summary
-
-| ID  | Category | Description | Impact | Effort | Status |
-|-----|----------|-------------|--------|--------|--------|
-| A1  | MCTS     | Swap rule (swapmodel port) | High | Low | **Done** |
-| A2  | MCTS     | Smart-init Q pre-seeding (FPU) | High | Low | **Done** |
-| A3  | MCTS     | Tree reuse: extend to 4 moves + fix O(N²) replay | Medium | Medium | Pending |
-| A4  | MCTS     | PUCT constant tuning (cpuct 1.0 → 0.5–0.75) | Medium | Low | Pending |
-| B1  | Model    | INT8 quantization of ONNX model | High (iOS) | Low | Pending |
-| B7  | Model    | Deeper policy head (3×3 conv) | Medium–High | Medium | Pending |
-| B9a | Model    | KataGo global pooling bias | High | High | Pending |
-| B5  | Model    | Attention / non-local blocks | High potential | High | Future |
+> **Status and priority for all items are tracked in `docs/planned-features.md`
+> (sections 1–2). This document contains the technical background and implementation
+> details for each improvement.**
 
 ---
 
@@ -184,11 +173,3 @@ to attention-based architectures.
 | **Opening book / retrieval-augmented MCTS** (2023–24) | ~100 KB JSON for first 2–3 moves; eliminates wasted compute on trivially-decided openings |
 | **MuZero full / world model** | Not browser-compatible — dynamics network is larger than the entire current model |
 
----
-
-## Recommended Implementation Order
-
-1. **Now** (done): A1 swap rule + A2 smart_init — no retraining, immediate correctness gain
-2. **Next**: B1 INT8 quantization — immediate iOS relief, no new training
-3. **Next training run**: B7 deeper policy head + data augmentation (4-fold symmetry) + B9a global pooling bias — all in one training cycle
-4. **Longer term**: A3 tree reuse fix + A4 cpuct tuning (needs arena validation) + B5 attention (after B9a baseline)

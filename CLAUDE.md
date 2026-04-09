@@ -35,6 +35,13 @@ as a PWA on GitHub Pages (`https://eeichinger.github.io/twixtbot-app/`).
 - AI uses MCTS + neural network policy/value evaluation
 - Fully offline-capable (PWA with Service Worker)
 
+### Feature tracking
+
+All planned features, improvement ideas, and their priority/status are tracked
+in **`docs/planned-features.md`**. Update that file when adding new ideas or
+changing the status of an existing item. Do not track feature status in CLAUDE.md
+or in separate one-off docs.
+
 ---
 
 ## Original Python-Based Approach
@@ -73,9 +80,8 @@ targeting AMD Ryzen 7800X3D + RTX 5070 Ti. Key differences from original:
 
 ---
 
-## AI Opponent: Improvement Ideas & Recommendations
+## AI Opponent: Current Setup
 
-### Current Setup (webapp)
 - MCTS with a 5–60 second time budget (user-configurable)
 - Neural network policy + value from an ONNX-exported model
 - `MAX_TRIALS = 100_000` (effectively unlimited; real constraint is time)
@@ -83,46 +89,7 @@ targeting AMD Ryzen 7800X3D + RTX 5070 Ti. Key differences from original:
   best move found so far; MCTS `await` may still be running (WASM blocking)
   when the result is sent
 
-### Improvement Ideas
-
-**1. Swap rule implementation (RECOMMENDED)**
-Currently the AI plays a random/policy move for swap. The original codebase
-uses a fitted logistic model (`swapmodel.py`) to decide whether to swap.
-Porting this to TypeScript would significantly improve early-game play.
-The swap model coefficients are simple enough to hardcode.
-
-**2. Progressive widening / better MCTS tuning**
-The current MCTS uses uniform Dirichlet noise (α=0.3 default). Tuning the
-exploration constant (currently 1.0) and noise weight (0.0 in competitive
-mode) could improve strength.
-
-**3. Larger/stronger model (RECOMMENDED for quality)**
-The deployed model (`models/six-917000`) is the TF1-era model, which the
-README acknowledges "can probably be improved with more training and/or a
-bigger net." The PyTorch rewrite enables training a stronger model. A
-`filters=128, blocks=12` config would be a significant upgrade, but would
-increase ONNX model file size and memory usage — measure iOS impact first.
-
-**4. Quantized model (RECOMMENDED for iOS memory)**
-Converting the ONNX model to int8 or fp16 would reduce model weight memory
-by 2–4×. This directly addresses the iOS deferred-kill problem (see iOS
-section). Tools: `onnxruntime.quantization` or `onnxmltools`.
-
-**5. MCTS opening book**
-For the first 2–3 moves, replace MCTS with a hardcoded or precomputed
-opening book. Avoids burning 5+ seconds on trivially-decided early moves.
-
-**6. Worker restart on new game vs. keep-alive**
-Currently the worker is terminated after each AI move (to free WASM heap
-memory during the human turn — see iOS section). Restarting takes ~0.5–1s
-from HTTP cache. For fast think times (≤5s) this overhead is noticeable.
-If iOS memory issues are resolved (e.g., via model quantization), switching
-back to keep-alive would improve responsiveness.
-
-**7. `computing-done` message for diagnostics**
-The worker sends `{ type: 'computing-done', elapsed }` from its `finally`
-block. This reveals how long WASM was still running after the hard deadline
-fired. Useful for tuning `timeLimitMs` vs. actual MCTS depth.
+See `docs/planned-features.md` (sections 1–2) for AI/MCTS and model improvement ideas.
 
 ---
 

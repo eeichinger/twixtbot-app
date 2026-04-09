@@ -1,55 +1,16 @@
-# Little Golem Integration — Planned Features
+# Little Golem Integration — Technical Reference
 
-Tracks ideas and scope for the LG Explore & Replay feature.
-Check items off as they are shipped.
-
----
-
-## MVP — shipped ✓
-
-- [x] **Player search** — search by name → player list with rating
-- [x] **Game list** — tap player → list of their recent TwixT PP games
-      (opponent name, move count, win/lost/draw result)
-- [x] **Game replay** — tap game → load SGF via proxy → step through moves
-      on a read-only board (first/prev/next/last + arrow keys)
-- [x] **Search by game ID** — enter a numeric LG game ID directly in the
-      search box to jump straight to replay
-- [x] **Paste / upload SGF** — paste raw `.tsgf` text or upload a file
-      from the device; no network request needed
-- [x] **CORS proxy** — Cloudflare Worker (`littlegolem-proxy.eeichinger.workers.dev`)
-      forwards GET requests to LG; restricted to `littlegolem.net` targets
-- [x] **Mock mode** — `MOCK_MODE` flag in `lg-api.ts` for offline UX testing
-      without real LG requests; mock data includes a real game (id 2060663)
-- [x] **Back navigation** — replay → game list (restores from cache, no re-fetch);
-      game list → player list (same); any screen → intro
-
----
-
-## Near-term ideas
-
-- [x] **Show which color the player was** — `PB`/`PW` parsed from SGF;
-      replay title shows "BlackPlayer vs WhitePlayer #id".
-
-- [x] **Result from SGF perspective** — `RE` field parsed in `lg-sgf.ts`;
-      `formatResult()` converts "B+"/"W+"/"0" to human-readable text;
-      shown in the game list card.
-
-- [x] **Highlight last move** — red ring (`#cc2040`) drawn on the most
-      recently stepped-to peg in `ui.ts`.
-
-- [x] **Keyboard shortcut** — arrow keys (←/→) and Home/End fully working
-      in `main.ts`; active whenever the replay screen is visible.
-
-- [x] **Pagination / load more** — not needed. Verified: `player_game_list.jsp`
-      returns all games for a player in a single response with no server-side
-      pagination.
+> **Feature ideas, priorities, and status are tracked in `docs/planned-features.md`
+> (section 6). This document contains technical background for the LG Network Play
+> feature (auth, move submission, security constraints) which is blocked pending
+> investigation of live LG endpoints.**
 
 ---
 
 ## LG Network Play — play against other humans on Little Golem
 
-> **Important but complex — open investigation items must be resolved before
-> implementation can begin (see below).**
+> **Blocked — open investigation items must be resolved before implementation
+> can begin (see below).**
 
 ### How LG correspondence play works
 
@@ -66,40 +27,6 @@ Check items off as they are shipped.
      (5-player brackets, auto-paired by rating)
 - **TwixT on LG**: TwixT PP ruleset; links auto-added by server and never deleted;
   board sizes 24×24, 30×30, 48×48; small but serious community
-
-### What fits well in twixtbot-app
-
-**Tier 1 — high value, buildable**
-
-- **"My active games" dashboard** — after LG login, show all your ongoing TwixT
-  games: opponent, whose turn, move count. Tap to open the board. Directly reuses
-  the existing board rendering and game list UI patterns. Foundation for everything
-  else.
-
-- **Play a move from the app** — when it's your turn: open the game (board rendered
-  via SGF), tap to place peg, confirm, submit to LG. Replaces LG's clunky web UI
-  with our clean mobile board. Board interaction code is already in place; the only
-  new piece is a POST call to LG to submit the move.
-
-- **AI hint before committing** — our biggest differentiator vs LG's own UI.
-  Before tapping "Submit", invoke the AI worker on the current position. LG has zero
-  analysis tools. No other TwixT mobile client offers this. Reuses the existing AI
-  worker with zero new ML work.
-
-**Tier 2 — nice to have later**
-
-- **Watch ongoing games** — show in-progress games in read-only replay mode (board
-  up to latest move). SGF for ongoing games is publicly accessible so this is almost
-  free once the "my games" list is implemented.
-
-- **Waiting Room browser** — browse/post open game invitations. Low priority;
-  LG's web UI is adequate for this.
-
-**Out of scope**
-
-- Direct challenge flow — secondary to the play-your-move flow
-- Tournament management — too complex, LG's own UI is fine
-- 30×30 / 48×48 board sizes — engine is hardcoded to 24×24
 
 ### Open investigation items (required before implementation)
 
@@ -158,47 +85,3 @@ Everything else (Waiting Room, watch mode, challenges) comes after this slice wo
   forwarded only to `https://www.littlegolem.net` — not derived from caller input
 - No credential logging anywhere in the Worker
 - UI must clearly warn the user that credentials are stored locally (unencrypted)
-
----
-
-## Analysis / AI integration ideas
-
-- [ ] **"Analyse this position" button in replay** — from any move in the
-      replay, launch the AI worker on the current board position and display
-      the best move / evaluation, just like the hint button in the main game.
-
-- [ ] **Move quality overlay** — for each move in the game, compare the move
-      played to the AI's top choice. Colour the move dots green/yellow/red
-      based on how much policy probability the AI assigned to the played move.
-      Requires running inference on every position — may be slow.
-
-- [ ] **Evaluation graph** — plot the AI's win-probability estimate at each
-      move as a sparkline below the board, showing how the game's fortunes
-      shifted. Requires inference on every position.
-
----
-
-## Social / discovery ideas
-
-- [ ] **Recently viewed games** — store the last N game IDs in localStorage
-      and show them as a "Recent" section at the top of the LG screen.
-
-- [ ] **Favourite players** — let the user star players; starred players
-      appear at the top of the search results without typing.
-
-- [ ] **"Games vs TwixT bot" shortcut** — a one-tap button to search for
-      games where TwixtBot (plid=3101) is one of the players.
-
----
-
-## Infrastructure / reliability
-
-- [ ] **Offline replay of previously loaded games** — cache the raw SGF text
-      in localStorage after first load so the user can revisit games offline.
-
-- [ ] **Proxy health check** — show a warning banner if the Cloudflare Worker
-      is unreachable (e.g. worker quota exceeded), rather than a generic
-      network error on the first LG request.
-
-- [ ] **Rate limiting / backoff** — if the user hammers the search button,
-      debounce requests to avoid hitting LG or the Worker excessively.

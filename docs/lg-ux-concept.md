@@ -1,5 +1,8 @@
 # Little Golem Integration — UX Concept & Implementation Plan
 
+> **Feature status and priority tracked in `docs/planned-features.md` (section 6).
+> This document is the UX design and technical reference; do not duplicate status here.**
+
 ## Context
 
 The twixtbot-app is a self-contained PWA for local TwixT play (vs AI or same-device PvP). This plan adds integration with Little Golem (LG), a correspondence game server with an active TwixT community. The integration enables users to browse LG games and step through them move-by-move for analysis and learning.
@@ -265,14 +268,3 @@ const url = `${LG_BASE}/jsp/info/player_game_list.jsp?gtid=twixt&plid=${encodeUR
 ```
 and remove the two-attempt fallback logic — fetch HTML directly, call `parseGameListHtml()` on the result.
 
----
-
-## Deferred (not in MVP)
-
-- **Live correspondence play** (My Games tab): Submit moves to LG; requires auth + CORS proxy decision
-- **Challenges tab**: Send/accept game invitations
-- **AI Suggest**: Local MCTS suggestion during LG turns
-- **Badge on intro**: "N games waiting" indicator (requires auth + polling)
-- **Offline replay cache**: Cache downloaded SGFs for offline replay
-- **SGF export**: Download/share SGF file to device
-- **Other platforms**: igGameCenter, Richard's PBeM, Abstract Play
