@@ -218,11 +218,17 @@
       </div>
       <!-- Move list panel (L4) — collapsible, always present in replay -->
       <div id="replay-move-list-panel">
-        <button id="replay-move-list-toggle" class="move-list-header">
-          <span class="analysis-icon">▾</span>
-          <span id="replay-move-list-label" class="move-list-label">Moves</span>
-        </button>
+        <div class="move-list-header-row">
+          <button id="replay-move-list-toggle" class="move-list-header">
+            <span class="analysis-icon">▾</span>
+            <span id="replay-move-list-label" class="move-list-label">Moves</span>
+          </button>
+          <button id="replay-analyse-game-btn" title="Analyse all moves with AI" class="replay-analyse-game-btn">Analyse game</button>
+        </div>
         <div id="replay-move-list-body" class="move-list-body"></div>
+        <div id="replay-game-sparkline-wrap" class="hidden">
+          <div class="sparkline-wrap"><canvas id="replay-game-sparkline" class="eval-sparkline"></canvas></div>
+        </div>
       </div>
 
       <footer id="replay-controls">

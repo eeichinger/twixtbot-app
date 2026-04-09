@@ -273,9 +273,12 @@ const $lgFileInput     = document.getElementById('lg-file-input') as HTMLInputEl
 const $moveListPanel   = document.getElementById('move-list-panel')!;
 const $moveListLabel   = document.getElementById('move-list-label')!;
 const $moveListBody    = document.getElementById('move-list-body')!;
-const $replayMoveListPanel  = document.getElementById('replay-move-list-panel')!;
-const $replayMoveListLabel  = document.getElementById('replay-move-list-label')!;
-const $replayMoveListBody   = document.getElementById('replay-move-list-body')!;
+const $replayMoveListPanel       = document.getElementById('replay-move-list-panel')!;
+const $replayMoveListLabel       = document.getElementById('replay-move-list-label')!;
+const $replayMoveListBody        = document.getElementById('replay-move-list-body')!;
+const $replayAnalyseGameBtn      = document.getElementById('replay-analyse-game-btn') as HTMLButtonElement;
+const $replayGameSparklineWrap   = document.getElementById('replay-game-sparkline-wrap')!;
+const $replayGameSparkline       = document.getElementById('replay-game-sparkline') as HTMLCanvasElement;
 
 // -------------------------------------------------------------------------
 // State
@@ -543,6 +546,31 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       const sec = Math.round((msg.elapsed as number) / 1000);
       const budget = msg.timeLimitMs != null ? ` / ${Math.round((msg.timeLimitMs as number) / 1000)}s` : '';
       $thinkingProgress.textContent = `${sec}s${budget}`;
+    } else if (msg.type === 'eval-game-progress') {
+      // L2+L3: accumulate per-move eval as it streams in.
+      const idx = msg.moveIndex as number;
+      replayGameEvals[idx] = { topQ: msg.topQ as number, rank: msg.rank as number };
+      const total = replayParsedGame?.moves.length ?? 0;
+      $replayAnalyseGameBtn.textContent = `Analysing… (${idx + 1}/${total})`;
+      // Update sparkline incrementally.
+      $replayGameSparklineWrap.classList.remove('hidden');
+      drawReplayGameSparkline();
+      // Apply quality colours to move list if it is currently expanded.
+      if ($replayMoveListPanel.classList.contains('expanded')) {
+        applyMoveQuality($replayMoveListBody);
+      }
+    } else if (msg.type === 'eval-game-done') {
+      replayGameAnalysisRunning = false;
+      $replayAnalyseGameBtn.disabled = false;
+      $replayAnalyseGameBtn.textContent = 'Re-analyse';
+      // Final redraw with position marker.
+      drawReplayGameSparkline();
+      if ($replayMoveListPanel.classList.contains('expanded')) {
+        applyMoveQuality($replayMoveListBody);
+      }
+      // Free the worker heap now that batch eval is complete.
+      worker.terminate();
+      workerAlive = false;
     }
   };
 
@@ -999,6 +1027,10 @@ let replayParsedGame: ParsedGame | null = null;
 let replayMoveIndex = 0;
 let replayAnalysisMode = false;
 
+/** Per-move eval results from eval-game batch run (L2+L3). Index = half-move index. */
+let replayGameEvals: Array<{ topQ: number; rank: number }> = [];
+let replayGameAnalysisRunning = false;
+
 const $replayAnalyseBtn    = document.getElementById('replay-analyse-btn') as HTMLButtonElement;
 const $replayAnalysisPanel = document.getElementById('replay-analysis-panel')!;
 const $replayWinProbText   = document.getElementById('replay-win-prob-text')!;
@@ -1022,6 +1054,7 @@ function hideAllScreens(): void {
   $lgScreen.classList.add('hidden');
   $replayScreen.classList.add('hidden');
   replayAnalysisMode = false;
+  replayGameAnalysisRunning = false;
 }
 
 function showLgScreen(): void {
@@ -1295,10 +1328,15 @@ function openReplayForParsedGame(parsed: ParsedGame): void {
   $replayTitle.textContent = title;
   diagLog(`lg-replay-open id=${parsed.id} moves=${parsed.moves.length}`);
 
-  // Reset move list panel for new game.
+  // Reset move list and game-analysis state for new game.
+  replayGameEvals = [];
+  replayGameAnalysisRunning = false;
   $replayMoveListPanel.classList.remove('expanded');
   $replayMoveListBody.innerHTML = '';
   $replayMoveListLabel.textContent = `Moves (${parsed.moves.length})`;
+  $replayGameSparklineWrap.classList.add('hidden');
+  $replayAnalyseGameBtn.disabled = false;
+  $replayAnalyseGameBtn.textContent = 'Analyse game';
 
   hideAllScreens();
   $replayScreen.classList.remove('hidden');
@@ -1338,7 +1376,10 @@ function replayShowAtIndex(index: number): void {
       replayMoveIndex - 1,
       (i) => replayShowAtIndex(i + 1),
     );
+    if (replayGameEvals.length > 0) applyMoveQuality($replayMoveListBody);
   }
+  // Redraw sparkline position marker if game analysis has run.
+  if (replayGameEvals.length > 0) drawReplayGameSparkline();
 }
 
 function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
@@ -1392,6 +1433,108 @@ function requestReplayAnalysis(): void {
   } else {
     initWorker(() => {
       worker.postMessage(moveMsg);
+    });
+  }
+}
+
+function drawReplayGameSparkline(): void {
+  if (replayGameEvals.length === 0) return;
+  const canvas = $replayGameSparkline;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(rect.width || 200, 200);
+  const h = 28;
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  ctx.strokeStyle = '#1a3050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, mid);
+  ctx.lineTo(w, mid);
+  ctx.stroke();
+
+  const evals = replayGameEvals;
+  const points = evals.map((e, i) => ({
+    x: evals.length === 1 ? w / 2 : (i / (evals.length - 1)) * w,
+    y: mid - e.topQ * (mid - 2),
+  }));
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, mid);
+  for (const p of points) ctx.lineTo(p.x, p.y);
+  ctx.lineTo(points[points.length - 1].x, mid);
+  ctx.closePath();
+  const lastQ = evals[evals.length - 1].topQ;
+  ctx.fillStyle = lastQ >= 0 ? 'rgba(231,76,60,0.2)' : 'rgba(93,173,226,0.2)';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.strokeStyle = lastQ >= 0 ? '#e74c3c' : '#5dade2';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Draw a vertical marker at the current replay position
+  if (replayMoveIndex > 0 && evals.length > 0) {
+    const evalIdx = Math.min(replayMoveIndex - 1, evals.length - 1);
+    const markerX = evals.length === 1 ? w / 2 : (evalIdx / (evals.length - 1)) * w;
+    ctx.strokeStyle = 'rgba(200,220,240,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(markerX, 0);
+    ctx.lineTo(markerX, h);
+    ctx.stroke();
+  }
+}
+
+/** Apply quality CSS classes to move list rows based on replayGameEvals. */
+function applyMoveQuality(container: HTMLElement): void {
+  const spans = container.querySelectorAll<HTMLElement>('.ml-move');
+  spans.forEach((span, halfIdx) => {
+    span.classList.remove('ml-q-best', 'ml-q-good', 'ml-q-poor');
+    if (halfIdx < replayGameEvals.length) {
+      const { rank } = replayGameEvals[halfIdx];
+      if (rank < 0) return;  // swap move
+      if (rank === 0)      span.classList.add('ml-q-best');
+      else if (rank <= 4)  span.classList.add('ml-q-good');
+      else                 span.classList.add('ml-q-poor');
+    }
+  });
+}
+
+function requestReplayGameAnalysis(): void {
+  if (!replayParsedGame || replayGameAnalysisRunning) return;
+  replayGameAnalysisRunning = true;
+  replayGameEvals = [];
+  $replayAnalyseGameBtn.disabled = true;
+  $replayAnalyseGameBtn.textContent = 'Analysing…';
+
+  // Ensure move list is expanded so quality colours are visible.
+  if (!$replayMoveListPanel.classList.contains('expanded')) {
+    $replayMoveListPanel.classList.add('expanded');
+    renderMoveList(
+      $replayMoveListBody,
+      replayParsedGame.moves,
+      replayMoveIndex - 1,
+      (i) => replayShowAtIndex(i + 1),
+    );
+  }
+
+  const history = replayParsedGame.moves
+    .map(m => m === 'swap' ? 'swap' : { x: (m as {x:number;y:number}).x, y: (m as {x:number;y:number}).y });
+
+  const evalMsg = { type: 'eval-game', history };
+
+  if (workerAlive) {
+    worker.postMessage(evalMsg);
+  } else {
+    initWorker(() => {
+      worker.postMessage(evalMsg);
     });
   }
 }
@@ -1542,6 +1685,7 @@ function init(): void {
     if ($lgResults.children.length > 0) lgSetState('results');
   });
   $replayAnalyseBtn.addEventListener('click', () => requestReplayAnalysis());
+  $replayAnalyseGameBtn.addEventListener('click', () => requestReplayGameAnalysis());
   $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
   $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));
   $replayNextBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex + 1));

@@ -121,8 +121,8 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
 | L1 | "Analyse this position" button in replay | P1 | Low | **Done** | Analyse button in replay header; panel shows win-prob + top-3 bars below board. Reuses worker; `replayAnalysisMode` flag gates result handler. Panel clears on move navigation. |
-| L2 | Move quality overlay | P2 | Medium | Pending | For each played move, compare to AI's top choice — colour the move dot green/yellow/red based on policy rank. Requires inference on every position. |
-| L3 | Evaluation graph | P2 | Medium | Pending | Plot AI win-probability at each move as a sparkline below the board. Same per-position inference as L2; the two features share one inference pass. |
+| L2 | Move quality overlay | P2 | Medium | **Done** | "Analyse game" button runs `eval-game` worker batch (single NN forward pass per position). Move list entries coloured green (rank 0) / yellow (rank 1–4) / red (rank 5+) as results stream in. |
+| L3 | Evaluation graph | P2 | Medium | **Done** | Same `eval-game` batch as L2. Sparkline below move list shows topQ at each position with a vertical marker at the current replay move. Updates incrementally as results stream in. |
 | L4 | Move list panel in replay | P2 | Low | **Done** | Same `renderMoveList()` as U1. Replay screen: always present, clickable rows jump to that position via `replayShowAtIndex(i+1)`. Refreshes on every navigation. |
 
 ### LG · Game List Filters (Explore screen)

@@ -275,5 +275,39 @@ self.onmessage = async (e: MessageEvent) => {
     // Reset tree to free memory; the in-flight async MCTS will finish its current
     // trial and then return (time limit check will stop the loop on next iteration).
     if (mcts) mcts = new NeuralMCTS((game) => player!.eval(game), 0.5, 0.0);
+
+  } else if (msg.type === 'eval-game') {
+    // Batch-evaluate every position in a game with a single NN forward pass each.
+    // Returns streaming eval-game-progress messages, then eval-game-done.
+    // No MCTS — just the raw policy/value output for each position.
+    if (!player) {
+      self.postMessage({ type: 'error', message: 'Worker not initialised' });
+      return;
+    }
+    const { policyPointToIndex } = await import('./naf.js');
+    const history: MoveRecord[] = (msg.history as MoveMsg[]).map(toMoveRecord);
+    const total = history.length;
+
+    for (let i = 0; i < total; i++) {
+      const g = replayHistory(history.slice(0, i));
+      const turn = g.turn;
+      const [topQ, policyLogits] = await player.eval(g);
+
+      // Rank of the played move (lower = better; 0 = top policy choice).
+      // 'swap' moves get rank -1 (not a placement).
+      let rank = -1;
+      const played = history[i];
+      if (played !== 'swap') {
+        const playedIdx = policyPointToIndex(turn, played);
+        const playedLogit = policyLogits[playedIdx];
+        rank = 0;
+        for (let j = 0; j < policyLogits.length; j++) {
+          if (policyLogits[j] > playedLogit) rank++;
+        }
+      }
+
+      self.postMessage({ type: 'eval-game-progress', moveIndex: i, topQ, rank });
+    }
+    self.postMessage({ type: 'eval-game-done', total });
   }
 };
