@@ -29,6 +29,36 @@ while a player who wants analysis has everything one tap away.
 
 ---
 
+## Mode Applicability Matrix
+
+The three screens share the same board canvas component but have different analysis
+contexts. This matrix is the anchor for every design decision below.
+
+| Feature | PvC | PvP | Replay |
+|---------|-----|-----|--------|
+| Win-prob bar (V3) | Auto — after each AI move | On-demand — after Suggest | On-demand — after Analyse |
+| Top-3 candidates (V2) | Auto — after each AI move | On-demand — after Suggest | On-demand — after Analyse |
+| Eval history sparkline (V4) | Auto — grows as game progresses | On-demand — after each Suggest | On-demand — "Analyse full game" |
+| Heatmap overlay (V5) | Toggle button (any time) | Toggle button (any time) | Toggle button (any time) |
+| MCTS progress (V1) | Auto — during AI thinking | Auto — during Suggest | N/A |
+| Best-line on board (V6) | Auto — during AI thinking | Auto — during Suggest | N/A |
+| Move list (U1) | Toggle in analysis strip | Toggle in analysis strip | Always expanded (primary nav) |
+| Move quality overlay (L2) | N/A | N/A | After "Analyse full game" |
+| Redo (G1) | Yes | Yes | N/A — use step controls instead |
+| Resign (G2) | Yes | Yes | N/A |
+| Thinking overlay (V1/V6) | Yes — AI thinks automatically | Yes — only when Suggest pressed | N/A |
+| Analysis strip | Auto-appears after AI move | Appears after Suggest | Always visible (primary UI) |
+
+**Key observations:**
+- In PvP the analysis strip and win-prob bar are *on-demand*, triggered by Suggest.
+  Before any Suggest press the game screen looks identical to today.
+- In Replay, analysis is the *primary purpose* of the screen. The analysis strip is
+  always open, the move list is the main navigation tool, and AI is invoked explicitly.
+- The heatmap (V5) is the one feature that works identically in all three modes — it's
+  always a one-tap on-demand overlay on the current board position.
+
+---
+
 ## Streamlining Decisions
 
 ### Bot vs Bot — already solved, no new mode needed
@@ -109,7 +139,10 @@ A 3px horizontal bar directly under the status text line, spanning the full widt
 - **Appears:** after the first AI move that returns a `topQ` value. Hidden before then
   (zero height, no layout shift).
 - **Updates:** on every AI result message.
-- **In PvP:** hidden entirely (no AI `topQ` available).
+- **In PvP:** hidden until the first Suggest is used; then behaves the same as PvC
+  (shows eval for that one position, stays until the next human move clears it).
+- **In Replay:** not in the status bar — win probability appears inside the always-open
+  analysis strip instead (see Replay section).
 
 This conveys the key insight — who's ahead — at a glance, without any tap or expand.
 
@@ -161,13 +194,16 @@ A collapsible panel living in the vertical space below the board canvas.
 ### Handle (always visible when any AI data is available)
 
 ```
-▸ Analysis   last: h5 · 72% · 1,847 trials
+▸ Analysis   last: h5 · 72% · 1,847 trials    ← PvC / after Suggest in PvP
+▸ Analysis   —                                 ← PvP before first Suggest (no data)
 ```
 
 - 32px tall, tappable to expand/collapse.
-- The handle shows a one-line summary of the last AI move so the strip carries value
+- The handle shows a one-line summary of the last AI result so the strip carries value
   even when collapsed.
-- Hidden entirely before the first AI move (no data yet).
+- In **PvC**: hidden before the first AI move, then always visible.
+- In **PvP**: visible from game start (move list is always useful), but the one-line
+  summary shows "—" until Suggest has been used at least once.
 - Collapsed state is remembered in localStorage (`twixt-analysis-open`).
 
 ### Expanded content
@@ -220,6 +256,123 @@ m7   █████                 13%
 - **Moves (U1):** Toggles a move-list view replacing (or appearing below) the stats
   section. Shows the full game history as paired move chips: `1. h5 · r9 · 2. d6 · …`
   — compact horizontal flow, wrapping. The current move is bolded if in replay.
+
+---
+
+## PvP Mode: Analysis on Demand
+
+In PvP no AI runs automatically, so none of V1–V4 appear unprompted. The analysis
+strip is present from the start but shows only the move list until Suggest is used.
+
+**Suggest in PvP** triggers a full AI evaluation of the current position for one side:
+- The thinking overlay appears (and if Phase 2 is complete, shows V1/V6).
+- On result: win-prob bar appears in the status bar, analysis strip populates with
+  the same V2+V3 content as PvC.
+- The eval sparkline (V4) adds one point per Suggest press (not per game move).
+  This creates a partial "advice history" rather than a continuous eval chart, which
+  is fine — it reflects which moments the players asked for AI input.
+
+**Move list (U1)** is the most useful PvP analysis feature and is available from the
+first move, no Suggest needed.
+
+**Heatmap (V5)** works at any time in PvP, as it only requires the board position —
+not an ongoing AI game. In PvP it becomes a study tool: "what does the AI think of
+this position right now?" On-demand NN inference, same toggle button as PvC.
+
+No other changes to the PvP control bar or flow. The six-button control bar
+(`⚙ Undo Redo Suggest Resign Export`) is identical in PvP and PvC.
+
+---
+
+## Replay Screen: Analysis as the Primary Goal
+
+The replay viewer is a different screen (`#replay-screen`) whose *purpose* is analysis.
+The design principles invert slightly: the analysis strip is **always open** (it is
+the primary content below the board), and AI is invoked explicitly rather than
+automatically.
+
+### Replay screen layout (portrait phone)
+
+```
+┌────────────────────────────────────┐
+│ ←   Player1 (B) vs Player2 (W)    │  56px — header with back + title
+├────────────────────────────────────┤
+│                                    │
+│         B O A R D                  │  flex:1 — board canvas (read-only)
+│          (430×430)                 │
+│                                    │
+│  ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ │  unused vertical space
+│                                    │
+│  ┌──────────────────────────────┐  │  \
+│  │ 1. h5  r9  2. d6  m12  3. … │  │  | Move list (U1/L4)
+│  │ ▶ 4. f8  ←── current move   │  │  | always visible, scrollable
+│  └──────────────────────────────┘  │  /
+│                                    │
+│  ┌──────────────────────────────┐  │  \
+│  │ [Analyse position] [🗺 Heat] │  │  | Analysis controls
+│  │ Win prob  ████████░░  64%    │  │  | (empty until Analyse pressed)
+│  │ h8 ██████████ 41%  (best)   │  │  |
+│  │ k5 ████       17%           │  │  |
+│  │ e7 ███        12%           │  │  |
+│  └──────────────────────────────┘  │  /
+├────────────────────────────────────┤
+│ |◀   ◀   Move 4 / 47   ▶   ▶|    │  ~50px — step controls (unchanged)
+└────────────────────────────────────┘
+```
+
+### Move list (U1 / L4) — primary navigation
+
+The move list is the first thing shown below the board in replay, always expanded:
+
+- Compact horizontal flow: `1. h5 · r9   2. d6 · m12   3. f8 · …`
+- Current move is highlighted (bold or accent color).
+- Tapping any move jumps directly to that position (replaces step controls for
+  non-sequential navigation).
+- The step controls (`|◀ ◀ Move N/Total ▶ ▶|`) are retained as the primary
+  sequential navigation — move list provides quick jumping.
+
+### Per-position analysis (L1 equivalent)
+
+An **"Analyse position"** button below the move list triggers AI evaluation of the
+current board state:
+
+- Loads the AI worker (or reuses it if already alive).
+- Runs a short MCTS pass (thinking overlay appears; same V1/V6 enhancements apply).
+- On result: populates the analysis section with win-prob bar + top-3 moves (V2+V3).
+- The result is cached for this move index so stepping away and back doesn't require
+  re-analysis.
+- The Heatmap toggle (V5) is always available; it uses the same on-demand NN inference
+  as in PvC/PvP and does not require the Analyse button first.
+
+### Full-game analysis ("Analyse full game")
+
+A secondary button (or a confirmation prompt after "Analyse position" shows once) that
+runs AI evaluation on **every position** in the game sequentially:
+
+- Shows a progress bar: "Analysing move 7 / 47…"
+- On completion: populates the eval history sparkline (V4/L3) for all moves.
+- Enables the **move quality overlay (L2)**: each peg is colored on the board by
+  how well the AI rated the move that placed it — green (best or near-best),
+  yellow (reasonable), red (significantly worse than top choice).
+
+### Eval history sparkline in replay (V4 / L3) — interactive
+
+In PvC the sparkline is decorative. In replay it is interactive:
+
+- Each bar in the sparkline corresponds to one move in the game.
+- The current move's bar is highlighted.
+- **Tapping any bar jumps to that move** — same effect as tapping the move list.
+- The sparkline thus doubles as a visual timeline and a navigation control.
+
+### Replay screen analysis states
+
+| State | What's shown |
+|-------|-------------|
+| Just opened | Move list + "Analyse position" button + "🗺 Heatmap" button |
+| After "Analyse position" | + Win prob bar, top-3 moves for current position |
+| After stepping away | Cached result stays; new position shows stale badge until re-analysed |
+| After "Analyse full game" | + Interactive sparkline, move quality overlay on board |
+| Heatmap active | Policy color circles overlaid on board cells (independent of above) |
 
 ---
 
@@ -291,49 +444,58 @@ Slide-up bottom sheet triggered by the ⚙ button.
 | Feature | Why deferred |
 |---------|-------------|
 | V6 best-line (full implementation) | Requires worker protocol change + board renderer extension — Phase 2 |
-| V4 sparkline interactivity (tap to jump) | Needs replay integration — after move-list work |
-| U2 coordinate tooltip | Minor quality-of-life; already partially covered by drag preview |
+| L2 move quality overlay | Depends on full-game analysis pass being complete — Phase 3 |
+| V4 sparkline interactivity in PvC | In PvC, bars are decorative in Phase 1; tapping to rewind is a Phase 2 addition |
+| "Analyse full game" in replay | Slow (N × inference); deferred until per-position analysis (L1) is solid |
+| U2 coordinate tooltip | Minor quality-of-life; drag preview already partially covers this |
 | U5 Player names | Low demand for a single-player vs AI app |
 | G4 SCL rule (full UX) | In Settings panel but mid-game change warning is a nice-to-have |
-| Eval history in replay viewer | Separate scope — part of LG analysis feature set |
 
 ---
 
 ## Feature → Location Summary
 
-| ID | Feature | Location |
-|----|---------|----------|
-| V1 | MCTS progress indicator | Thinking overlay (trial counter) |
-| V2 | Top-3 candidate moves | Analysis strip → Last move section |
-| V3 | Win probability | Status bar bar + Analysis strip header |
-| V4 | Eval history sparkline | Analysis strip → sparkline section |
-| V5 | Policy heatmap | Analysis strip → Heatmap toggle → board overlay |
-| V6 | Best-line visualization | Board under thinking overlay (Phase 2) |
-| G1 | Redo | Control bar |
-| G2 | Resign | Control bar |
-| G3 | Bot vs Bot | Not a new feature — Suggest handles it |
-| G4 | SCL rule | Settings panel |
-| U1 | Move list | Analysis strip → Moves toggle |
-| U2 | Coordinate tooltip | Deferred (drag preview already covers this) |
-| U3 | Show/hide labels | Settings panel |
-| U4 | Show/hide guidelines | Settings panel |
-| U5 | Player names | Deferred |
+| ID | Feature | PvC | PvP | Replay |
+|----|---------|-----|-----|--------|
+| V1 | MCTS progress | Thinking overlay | Thinking overlay (Suggest) | N/A |
+| V2 | Top-3 candidate moves | Analysis strip — auto | Analysis strip — after Suggest | Analysis strip — after Analyse |
+| V3 | Win probability | Status bar + strip — auto | Status bar + strip — after Suggest | Analysis strip — after Analyse |
+| V4 | Eval history sparkline | Analysis strip — auto, static | Analysis strip — partial (one point per Suggest) | Analysis strip — interactive, after full-game analysis |
+| V5 | Policy heatmap | Heatmap toggle → board | Heatmap toggle → board | Heatmap toggle → board |
+| V6 | Best-line viz | Board under overlay (Phase 2) | Board under overlay on Suggest (Phase 2) | N/A |
+| G1 | Redo | Control bar | Control bar | N/A (step controls) |
+| G2 | Resign | Control bar | Control bar | N/A |
+| G3 | Bot vs Bot | Not new — Suggest handles it | Not new — Suggest handles it | N/A |
+| G4 | SCL rule | Settings panel | Settings panel | N/A |
+| U1 | Move list | Analysis strip → toggle | Analysis strip → toggle | Always open, primary nav |
+| L1 | Analyse position | N/A | N/A (Suggest is equivalent) | "Analyse position" button |
+| L2 | Move quality overlay | N/A | N/A | Board overlay after full-game analysis |
+| L3 | Eval history in replay | N/A | N/A | Interactive sparkline (same as V4) |
+| L4 | Move list in replay | N/A | N/A | Same as U1 — always open |
+| U2 | Coordinate tooltip | Deferred | Deferred | Deferred |
+| U3 | Show/hide labels | Settings panel | Settings panel | Settings panel |
+| U4 | Show/hide guidelines | Settings panel | Settings panel | Settings panel |
+| U5 | Player names | Deferred | Deferred | N/A |
 
 ---
 
 ## Phased Implementation
 
-### Phase 1 — Quick wins (no new data from worker)
-1. Control bar: move Strength + Think-time to Settings panel; add Redo + Resign buttons
-2. Status bar: win-prob underline bar (use `topQ` from existing result message)
-3. Analysis strip handle + Last move stats (V2 + V3) — wire up existing result data
-4. Eval history sparkline (V4) — accumulate `topQ` per AI move in `main.ts`
+### Phase 1 — Quick wins, all modes (no new worker data)
+1. **PvC/PvP control bar:** move Strength + Think-time to Settings panel; add Redo + Resign
+2. **PvC status bar:** win-prob underline bar (wire `topQ` from existing result message)
+3. **PvC analysis strip:** handle + last move stats (V2+V3) + eval sparkline (V4)
+4. **Replay move list (L4/U1):** always-open move list with jump-to-move, replaces current plain counter
+5. **Replay "Analyse position" (L1):** button that runs AI → populates analysis section (V2+V3)
+6. **All modes heatmap (V5):** toggle button → single NN pass → board overlay
 
-### Phase 2 — Overlays and deeper analysis
-5. Thinking overlay trial counter (V1) — extend worker ping to include trial count
-6. Heatmap toggle (V5) — on-demand NN forward pass + canvas overlay
-7. Move list in analysis strip (U1)
-8. Settings panel toggles: show labels, guidelines, SCL
+### Phase 2 — Deeper analysis
+7. **Thinking overlay trial counter (V1):** extend worker ping to include root visit sum
+8. **PvP analysis strip:** show move list handle from game start; populate after Suggest
+9. **Replay interactive sparkline (V4/L3):** tap bar = jump to move (requires Phase 1 replay work)
+10. **Settings panel display toggles:** show labels, show guidelines, SCL rule (U3/U4/G4)
 
-### Phase 3 — Best-line visualization
-9. Best-line on board during thinking (V6) — extend worker ping with PV array + board renderer
+### Phase 3 — High-effort features
+11. **Best-line on board (V6):** extend worker ping with PV array; board renderer overlay
+12. **Replay full-game analysis:** batch inference pass + progress bar
+13. **Replay move quality overlay (L2):** peg coloring after full-game analysis
