@@ -31,10 +31,10 @@ jobs:
         run: pytest tests/ -v
 
   # -----------------------------------------------------------------------
-  # Export trained model: TF1 checkpoint → PyTorch .pt → ONNX
+  # Export trained model: TF1 checkpoint → PyTorch .pt → ONNX → INT8
   # -----------------------------------------------------------------------
   export-model:
-    name: Export model (TF1 → ONNX)
+    name: Export model (TF1 → ONNX → INT8)
     runs-on: ubuntu-latest
 
     steps:
@@ -56,13 +56,24 @@ jobs:
             --checkpoint models/six-917000 \
             --out models/six-917000.pt
 
-      - name: Export PyTorch .pt → ONNX
+      - name: Export PyTorch .pt → ONNX (fp32)
         run: |
           python tools/export_onnx.py \
             --model models/six-917000.pt \
             --out webapp/public/model.onnx
 
-      - name: Upload ONNX artifact
+      - name: Upload fp32 ONNX artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-onnx-fp32
+          path: webapp/public/model.onnx
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Quantize ONNX model (INT8 dynamic)
+        run: python tools/quantize_model.py --no-backup
+
+      - name: Upload INT8 ONNX artifact
         uses: actions/upload-artifact@v4
         with:
           name: model-onnx

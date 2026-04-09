@@ -55,7 +55,7 @@ All require re-export or retraining.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| B1 | INT8 quantization of ONNX model | P1 | Low | Pending | 2–4× memory reduction; direct iOS relief. One Python call: `quantize_dynamic`. No retraining. |
+| B1 | INT8 quantization of ONNX model | P1 | Low | **Done** | `quantize_model.py` (dynamic INT8, weights only) added as CI step after ONNX export. fp32 model uploaded as `model-onnx-fp32` artifact for reference. Deployed model is now INT8. |
 | B7 | Deeper policy head (3×3 conv) | P2 | Medium | Pending | Current head is a 2-ch 1×1 bottleneck; upgrade to 3×3→3×3→1×1→528 (~14K params) |
 | B9a | KataGo global pooling bias | P2 | High | Pending | Add GlobalAvgPool→Linear→broadcast-add at each residual block; captures long-range link density. Full retrain needed. |
 | B5 | Attention / non-local blocks | P4 | High | Future | ViT-style MHA or non-local blocks; profile inference cost after B9a first |
