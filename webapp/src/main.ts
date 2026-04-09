@@ -310,6 +310,12 @@ let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
 let heatmapActive  = false;
 /** True while a heatmap eval-position request is in-flight. */
 let pendingHeatmap = false;
+/** Routes the eval-position-result to the correct board ('game' or 'replay'). */
+let heatmapContext: 'game' | 'replay' = 'game';
+
+/** Replay-screen heatmap state (independent of game-screen heatmap). */
+let replayHeatmapActive  = false;
+let replayHeatmapPending = false;
 
 // -------------------------------------------------------------------------
 // UI helpers
@@ -337,9 +343,9 @@ function syncResignButton(): void {
   $resignBtn.classList.toggle('hidden', !show);
 }
 
-/** Show the heatmap button in PvC mode whenever the game is active and not over. */
+/** Show the heatmap button whenever the game is active and the AI is not mid-move. */
 function syncHeatmapButton(): void {
-  const show = gameMode === 'pvc' && !gameOver && !aiThinking;
+  const show = !gameOver && !aiThinking;
   $heatmapBtn.classList.toggle('hidden', !show);
   $heatmapBtn.disabled = pendingHeatmap;
 }
@@ -351,6 +357,14 @@ function clearHeatmap(): void {
     $heatmapBtn.classList.remove('active');
     board.setHeatmap(null, 0);
   }
+}
+
+function clearReplayHeatmap(): void {
+  replayHeatmapActive = false;
+  replayHeatmapPending = false;
+  $replayHeatmapBtn.classList.remove('active');
+  $replayHeatmapBtn.disabled = false;
+  replayBoardUI?.setHeatmap(null, 0);
 }
 
 // -------------------------------------------------------------------------
@@ -594,11 +608,19 @@ function initWorker(onReady: () => void = onWorkerReady): void {
       worker.terminate();
       workerAlive = false;
     } else if (msg.type === 'eval-position-result') {
-      // V5: heatmap result — apply to board if still active, then free worker.
-      pendingHeatmap = false;
-      syncHeatmapButton();
-      if (heatmapActive) {
-        board.setHeatmap(msg.policy as Float32Array, msg.turn as number);
+      // V5: heatmap result — route to game board or replay board by context.
+      if (heatmapContext === 'replay') {
+        replayHeatmapPending = false;
+        $replayHeatmapBtn.disabled = false;
+        if (replayHeatmapActive) {
+          replayBoardUI?.setHeatmap(msg.policy as Float32Array, msg.turn as number);
+        }
+      } else {
+        pendingHeatmap = false;
+        syncHeatmapButton();
+        if (heatmapActive) {
+          board.setHeatmap(msg.policy as Float32Array, msg.turn as number);
+        }
       }
       worker.terminate();
       workerAlive = false;
@@ -677,12 +699,32 @@ function requestAiMove(): void {
 function requestHeatmap(): void {
   if (pendingHeatmap || gameOver || aiThinking) return;
   pendingHeatmap = true;
+  heatmapContext = 'game';
   $heatmapBtn.disabled = true;
   diagLog('heatmap-request');
 
   const history: MoveMsg[] = game.history.map(m =>
     m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y }
   );
+  const req = { type: 'eval-position', history };
+
+  if (workerAlive) {
+    worker.postMessage(req);
+  } else {
+    initWorker(() => worker.postMessage(req));
+  }
+}
+
+function requestReplayHeatmap(): void {
+  if (!replayParsedGame || replayHeatmapPending) return;
+  replayHeatmapPending = true;
+  heatmapContext = 'replay';
+  $replayHeatmapBtn.disabled = true;
+  diagLog('replay-heatmap-request');
+
+  const history = replayParsedGame.moves
+    .slice(0, replayMoveIndex)
+    .map(m => m === 'swap' ? 'swap' : { x: (m as {x:number,y:number}).x, y: (m as {x:number,y:number}).y });
   const req = { type: 'eval-position', history };
 
   if (workerAlive) {
@@ -1102,6 +1144,7 @@ let replayGameEvals: Array<{ topQ: number; rank: number }> = [];
 let replayGameAnalysisRunning = false;
 
 const $replayAnalyseBtn    = document.getElementById('replay-analyse-btn') as HTMLButtonElement;
+const $replayHeatmapBtn    = document.getElementById('replay-heatmap-btn') as HTMLButtonElement;
 const $replayAnalysisPanel = document.getElementById('replay-analysis-panel')!;
 const $replayWinProbText   = document.getElementById('replay-win-prob-text')!;
 const $replayTop3Bars      = document.getElementById('replay-top3-bars')!;
@@ -1125,6 +1168,8 @@ function hideAllScreens(): void {
   $replayScreen.classList.add('hidden');
   replayAnalysisMode = false;
   replayGameAnalysisRunning = false;
+  replayHeatmapActive  = false;
+  replayHeatmapPending = false;
 }
 
 function showLgScreen(): void {
@@ -1398,9 +1443,13 @@ function openReplayForParsedGame(parsed: ParsedGame): void {
   $replayTitle.textContent = title;
   diagLog(`lg-replay-open id=${parsed.id} moves=${parsed.moves.length}`);
 
-  // Reset move list and game-analysis state for new game.
+  // Reset move list, game-analysis, and heatmap state for new game.
   replayGameEvals = [];
   replayGameAnalysisRunning = false;
+  replayHeatmapActive  = false;
+  replayHeatmapPending = false;
+  $replayHeatmapBtn.classList.remove('active');
+  $replayHeatmapBtn.disabled = false;
   $replayMoveListPanel.classList.remove('expanded');
   $replayMoveListBody.innerHTML = '';
   $replayMoveListLabel.textContent = `Moves (${parsed.moves.length})`;
@@ -1432,10 +1481,11 @@ function replayShowAtIndex(index: number): void {
   $replayNextBtn.disabled  = replayMoveIndex === total;
   $replayLastBtn.disabled  = replayMoveIndex === total;
 
-  // Hide analysis panel when navigating to a different move.
+  // Hide analysis panel and heatmap when navigating to a different move.
   $replayAnalysisPanel.classList.add('hidden');
   $replayAnalyseBtn.disabled = false;
   $replayAnalyseBtn.textContent = 'Analyse';
+  clearReplayHeatmap();
 
   // Refresh move list label and body (if expanded).
   $replayMoveListLabel.textContent = `Moves (${total})`;
@@ -1765,6 +1815,16 @@ function init(): void {
     if ($lgResults.children.length > 0) lgSetState('results');
   });
   $replayAnalyseBtn.addEventListener('click', () => requestReplayAnalysis());
+  $replayHeatmapBtn.addEventListener('click', () => {
+    if (replayHeatmapPending) return;
+    replayHeatmapActive = !replayHeatmapActive;
+    $replayHeatmapBtn.classList.toggle('active', replayHeatmapActive);
+    if (!replayHeatmapActive) {
+      replayBoardUI?.setHeatmap(null, 0);
+    } else {
+      requestReplayHeatmap();
+    }
+  });
   $replayAnalyseGameBtn.addEventListener('click', () => requestReplayGameAnalysis());
   $replayFirstBtn.addEventListener('click', () => replayShowAtIndex(0));
   $replayPrevBtn.addEventListener('click',  () => replayShowAtIndex(replayMoveIndex - 1));

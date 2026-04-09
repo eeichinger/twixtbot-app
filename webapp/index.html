@@ -120,12 +120,12 @@
       </main>
 
       <div id="game-controls">
-        <button id="hint-btn"   title="Let the AI play this move for you" class="hidden">Suggest</button>
-        <button id="undo-btn"   title="Undo your last move">Undo</button>
-        <button id="redo-btn"   title="Redo the undone move" disabled>Redo</button>
-        <button id="resign-btn"   title="Resign this game" class="hidden">Resign</button>
+        <button id="hint-btn"    title="Let the AI play this move for you" class="hidden">Hint</button>
+        <button id="undo-btn"    title="Undo your last move">Undo</button>
+        <button id="redo-btn"    title="Redo the undone move" disabled>Redo</button>
+        <button id="resign-btn"  title="Resign this game" class="hidden">Resign</button>
         <button id="heatmap-btn" title="Toggle policy heatmap" class="hidden">Heatmap</button>
-        <button id="export-btn"  title="Download game as .tsgf file">Export</button>
+        <button id="export-btn"  title="Download game as .tsgf file">Save</button>
         <button id="settings-btn" title="Settings">⚙</button>
       </div>
 
@@ -203,6 +203,7 @@
       <header id="replay-header">
         <button id="replay-back-btn" title="Back to search">&#8592;</button>
         <span id="replay-title">Replay</span>
+        <button id="replay-heatmap-btn" title="Toggle policy heatmap">Heatmap</button>
         <button id="replay-analyse-btn" title="Analyse this position">Analyse</button>
       </header>
       <main id="replay-board-container">
