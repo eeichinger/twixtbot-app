@@ -1,71 +1,76 @@
-# TwixTBot-App
+# TwixT vs AI
 
-A Progressive Web App (PWA) that lets you play the board game **TwixT** against a
-neural-network AI — or against another human on the same device — directly in your
-mobile browser, with no installation required.
+A free web app that lets you play the board game **TwixT** against a computer
+opponent — or against a friend on the same device — with no download or account
+required.
 
 **Play now:** https://eeichinger.github.io/twixtbot-app/
+
+The computer opponent is very strong (it has beaten top-rated players on
+Little Golem). You can tune its think time to make it as tough or as easy as
+you like. The app also includes tools to help you understand the game, learn
+from your mistakes, and explore thousands of real expert games.
 
 ---
 
 ## How to Play
 
-### Open the app
+### Opening the app
 
-Navigate to https://eeichinger.github.io/twixtbot-app/ in your browser.
-The app loads entirely offline after the first visit.
+Go to https://eeichinger.github.io/twixtbot-app/ in your browser. Everything
+loads in a few seconds. After the first visit it works entirely offline.
 
-### Install as a PWA (optional)
+### Install to your home screen (optional)
 
-- **iOS Safari:** tap the Share button → "Add to Home Screen"
-- **Android Chrome:** tap the three-dot menu → "Add to Home Screen" / "Install app"
+You can add the app to your home screen for one-tap access — no App Store needed.
+
+- **iPhone/iPad:** tap the Share button → "Add to Home Screen"
+- **Android:** tap the three-dot menu → "Add to Home Screen" or "Install app"
 - **Desktop Chrome/Edge:** click the install icon in the address bar
 
-Once installed, the app works offline and launches like a native app.
+Once installed it launches and behaves exactly like a native app, and still
+works offline.
 
-### Choose a game mode
+### Choose a mode
 
-| Mode | Description |
+| Mode | What happens |
 |------|-------------|
-| **vs Computer** | You play Black; the AI plays White |
-| **vs Player** | Two humans take turns on the same screen |
+| **vs Computer** | You play as Blue; the computer plays as Orange |
+| **vs Player** | Two people take turns on the same screen |
 
 Tap **Start Game** to begin.
 
-### Making moves
+### Placing a peg
 
-- **Tap** any empty intersection to place your peg
-- On touch screens, **drag** your finger to preview the peg before placing — release to confirm
-- Bridges (links) between your pegs are drawn automatically when they are valid
+- **Tap or click** any empty dot on the board to place your peg there
+- On a touchscreen, **press and drag** your finger to preview where the peg will
+  go, then lift your finger to confirm. The board label (e.g. "h5") appears next
+  to the peg so you always know the exact position before you commit.
+- On desktop, **hover** over the board to see the cell label, then click to place.
+- Bridges between your pegs are drawn automatically whenever they don't cross an
+  existing bridge.
 
-### In-game controls
+### Winning
 
-| Control | Action |
-|---------|--------|
-| **Undo** | Undo your last move (in vs-Computer mode, undoes both your move and the AI's) |
-| **AI move** | Let the AI play your move for you (vs-Computer mode only) |
-| **Think time selector** | Set how long the AI thinks: 5 s / 10 s / 30 s / 60 s |
-| **New** | Return to the title screen |
-
-### AI think time
-
-More time = stronger play. The default is 10 seconds. On slower devices or if you
-prefer a faster game, 5 seconds still produces strong moves.
+Connect your two border edges with an unbroken chain of pegs and bridges.
+Blue connects left ↔ right; Orange connects top ↔ bottom. The winning chain is
+highlighted in purple when the game ends.
 
 ---
 
-## TwixT — Brief Rules
+## Brief Rules
 
-TwixT is a two-player connection game played on a 24×24 grid.
+TwixT is played on a 24×24 grid of dots.
 
-- **Black** connects top ↔ bottom; **White** connects left ↔ right
-- Players take turns placing one peg per turn on any empty intersection
-- After placing a peg, bridges (knight's-move links) are automatically added to all
-  friendly pegs they can reach, provided no existing bridge would cross them
-- **Swap rule:** White may swap the first Black move instead of placing a new peg
-  (makes the opening fair regardless of which colour moves first)
-- The first player to connect their two opposite borders wins
-- Bridges cannot cross — this creates the tactical tension of the game
+- Players take turns placing one peg per turn on any empty dot
+- After placing, the game automatically adds bridges to nearby pegs that are
+  a chess knight's move away — but only if no existing bridge would cross the new one
+- **Bridges can never cross.** This is the heart of the game's tactics: blocking
+  your opponent's connections while building your own
+- **Swap rule:** the second player (Orange) may "swap" — instead of placing a new
+  peg they take the first peg for themselves and switch sides. This one-time option
+  keeps the game fair no matter who goes first.
+- The first player to connect their two edges wins
 
 Full rules: https://en.wikipedia.org/wiki/TwixT
 
@@ -73,56 +78,114 @@ Full rules: https://en.wikipedia.org/wiki/TwixT
 
 ## Features
 
-### Game modes
-- **vs Computer** — play against a neural-network AI (MCTS + ONNX Runtime)
-- **vs Player** — two humans take turns on the same device
+### Playing the game
 
-### Gameplay
-- Tap or click any intersection to place a peg
-- **Touch drag-to-preview** — drag your finger to see where the peg will land, release to confirm
-- Bridges are drawn automatically whenever they are valid (no crossing rule enforced)
-- **Swap rule** — on the AI's opening move you can swap colours to equalise first-mover advantage
-- **"AI move" button** — delegate any of your turns to the AI for a hint or to autopilot a move
-- **Undo** — in vs-Computer mode undoes both your move and the AI's reply; in vs-Player undoes one move
-- **Adjustable AI think time** — 5 s / 10 s / 15 s / 25 s / 30 s / 45 s / 60 s (choice persisted across sessions)
-- **Win detection** with the winning bridge path highlighted in purple
-- **Draw detection** when no legal moves remain
+- **Computer opponent** — a strong AI that thinks ahead. Set its think time from
+  5 to 60 seconds: shorter = faster and easier, longer = stronger. Your choice is
+  remembered between sessions.
+- **vs Player mode** — two people take turns on the same screen, great for playing
+  side by side or teaching someone the game
+- **Touch drag-to-preview** — press and drag on touchscreens to see exactly where
+  your peg will land before you release. A label shows the board coordinate so
+  there are no surprises.
+- **Hover tooltip** — on desktop, hovering over the board shows the cell label so
+  you can plan your move precisely before clicking
+- **Swap rule** — the app handles the swap option automatically at the right moment.
+  In vs-Computer mode the AI decides whether to swap intelligently, so you can see
+  what a good player would do.
 
-### Game import / export
-- **Export** the current game as a `.tsgf` file to your device
-- **LittleGolem explorer** — search for any LittleGolem player by name, browse their finished TwixT PP games, and open any game in the replay viewer
-- Fetch a specific LittleGolem game directly by entering its numeric game ID
-- **Download** any LittleGolem game as a `.tsgf` file
-- **Paste or upload** a `.tsgf` file from your device to replay it
+### Reviewing and correcting your moves
 
-### Replay viewer
-- Step through any game move by move (⏮ ← → ⏭ buttons)
-- Keyboard navigation: arrow keys step one move, Home/End jump to start/end
+- **Undo** — take back your last move. In vs-Computer mode it undoes both your move
+  and the computer's reply together, so it's always your turn again afterwards.
+- **Redo** — put the moves back if you change your mind after undoing
+- **Resign** — concede the game cleanly rather than playing to the bitter end
+- **Save** — download the current game as a `.tsgf` file so you can share it or
+  review it later
 
-### PWA / platform
-- **Fully offline** after the first visit — Service Worker caches all app assets and the AI model
-- **Installable** on iOS, Android, and desktop — no App Store required; launches like a native app
-- Works on iOS Safari, Android Chrome, and all modern desktop browsers
-- **Automatic updates** — new versions activate silently while you are on the intro screen, without interrupting an active game
+### Learning tools
+
+These features help you understand what is happening on the board, see where you
+went wrong, and get better over time.
+
+- **Hint** — tap "Hint" and the computer plays your move for you. Useful when
+  you're stuck or want to see what a strong player would do in a position.
+
+- **Win probability bar** — after each computer move, a coloured bar in the header
+  shows who is ahead: tilting blue means you're winning, tilting orange means the
+  computer is ahead. Watch it shift as the game develops.
+
+- **Top-move panel** — after each computer move, a collapsible panel shows the
+  three moves the computer rated highest, together with how strongly it preferred
+  each one. Compare them with what you played to spot better alternatives.
+
+- **Evaluation chart** — a small line graph tracks the balance of the game from
+  move to move. You can see at a glance which single move changed things the most.
+
+- **Policy heatmap** — tap the "Heatmap" button to overlay the board with colours
+  showing where the best moves are right now:
+  - **Green** — the computer's top choices
+  - **Cyan** — decent options worth considering
+  - **Blue** — less important squares
+
+  Great for beginners who aren't sure where to look on the board. Available in
+  vs-Computer mode, vs-Player mode, and during game replays.
+
+### Exploring real games
+
+The app connects to [Little Golem](https://www.littlegolem.net/), the world's
+largest TwixT community, so you can study expert games without leaving the app.
+
+- **Search by player name** — type any Little Golem player's name to browse all
+  their finished TwixT games
+- **Search by game ID** — go straight to any specific game if you know its number
+- **Filter by result** — show only wins, only losses, only draws, or all games
+- **Filter by opponent** — narrow the list to games against a specific player
+  (e.g. "show only my losses against TwixtBot")
+- **Replay any game** — step through a game one move at a time with the ← →
+  buttons, or use the left/right arrow keys on a keyboard
+- **Analyse any position** — while replaying, tap "Analyse" to get the computer's
+  opinion on the current position: win probability and the three best moves shown
+  instantly
+- **Heatmap during replay** — tap "Heatmap" at any point in a replay to see which
+  squares were most promising at that exact moment in the game
+- **Full game analysis** — tap "Analyse game" to score every move in the game
+  automatically. Each move in the list is colour-coded:
+  - **Green** — a great move (the computer's top choice or very close to it)
+  - **Yellow** — a reasonable move, but a better one was available
+  - **Red** — a significant mistake that hurt the position
+
+  A chart below shows how the game balance shifted with every move, making it
+  easy to find the key turning point.
+- **Paste or upload a game file** — got a `.tsgf` file? Paste its text or upload
+  it to replay it immediately
+
+### Platform
+
+- **Works offline** — after your first visit the app runs entirely on your device
+  with no internet needed. The computer opponent, all analysis tools, and game
+  replays all work offline (browsing Little Golem requires a connection).
+- **No account or installation required** — just open the link and play
+- **Automatic updates** — when a new version is ready, it installs quietly in the
+  background while you're on the start screen
 
 ---
 
 ## Attribution
 
-This project is a fork of [**twixtbot**](https://github.com/BonyJordan/twixtbot) by
-**Jordan Lampe** (MIT License, 2019). The original project is a Python 2 +
-TensorFlow 1.12 command-line AI that uses MCTS and a convolutional neural network
-trained by self-play. The trained model weights (`models/six-917000`) and the core
-game logic (`src/twixt.py`) originate from Jordan's work.
+This project builds on [**twixtbot**](https://github.com/BonyJordan/twixtbot) by
+**Jordan Lampe** (MIT License, 2019) — a command-line AI that plays TwixT using a
+self-trained neural network. The original game logic and model weights are Jordan's
+work.
 
-The entire PWA — TypeScript port of the game logic, MCTS engine, ONNX Runtime Web
-integration, Service Worker, Canvas UI, touch controls, iOS memory optimisations,
-and diagnostic tooling — was designed and built by
+The web app — TypeScript port, AI engine, offline PWA, board UI, touch controls,
+iOS memory optimisations, Little Golem integration, and all the analysis and
+learning features — was designed and built by
 [**Claude**](https://claude.ai) (Anthropic's AI assistant).
 
 ---
 
-## Developer Notes
+## Developer notes
 
 ### Local development
 
@@ -139,36 +202,38 @@ cd webapp
 npm run build      # Output in webapp/dist/
 ```
 
-The `prebuild` script copies the required ONNX Runtime WASM files into `public/`
-automatically.
+### Tests
+
+```bash
+cd webapp
+npm test -- --run
+```
 
 ### Project structure
 
 ```
 src/               Original Python/TensorFlow bot (Jordan Lampe)
-models/            Trained TF1 model weights
-webapp/            TypeScript PWA (built by Claude)
+models/            Trained model weights
+tools/             Model export and quantization scripts
+webapp/
   src/
-    main.ts        App shell, game loop, worker lifecycle
-    twixt.ts       Game logic (ported from src/twixt.py)
-    mcts.ts        MCTS engine
-    onnx-player.ts ONNX Runtime wrapper
-    worker.ts      Web Worker (runs MCTS + inference off main thread)
-    ui.ts          Canvas board renderer + touch/pointer input
-    sw.ts          Service Worker (offline caching + COOP/COEP headers)
-    naf.ts         Position -> model input tensor encoding
-    game-mode.ts   Game mode helpers
-docs/              Architecture and research notes
+    main.ts        App shell, game loop, UI wiring
+    twixt.ts       Game logic
+    mcts.ts        Monte Carlo Tree Search engine
+    onnx-player.ts Neural network inference wrapper
+    worker.ts      Web Worker — runs AI off the main thread
+    ui.ts          Canvas board renderer and touch/pointer input
+    sw.ts          Service Worker — offline caching
+    naf.ts         Position encoding for the neural network
+    lg-api.ts      Little Golem API client
+    lg-sgf.ts      TSGF game file parser
+docs/
+  planned-features.md   Feature backlog and status
+  CLAUDE.md             Architecture decisions and iOS notes
 ```
 
-### Architecture notes
-
-See [`CLAUDE.md`](CLAUDE.md) for detailed notes on:
-- ONNX Runtime WASM binary selection (critical for iOS)
-- iOS memory management and the deferred-kill problem
-- Service Worker COOP/COEP header injection
-- Diagnostic logging system
-- AI improvement ideas
+See [`CLAUDE.md`](CLAUDE.md) for detailed technical notes on iOS memory
+management, Service Worker setup, and AI architecture.
 
 ---
 

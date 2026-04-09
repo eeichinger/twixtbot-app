@@ -4,7 +4,7 @@ Consolidated from `docs/improvements.md`, `docs/lg-planned-features.md`,
 `docs/network-pvp-research.md`, and a feature comparison against
 `github.com/eeichinger/twixtbot-ui` (the desktop Python app).
 
-Last updated: 2026-04-09 (session 3).
+Last updated: 2026-04-09 (session 4).
 
 ---
 
