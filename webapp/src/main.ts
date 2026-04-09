@@ -297,10 +297,9 @@ let pendingAnalysis: { topQ: number; top3: Top3Move[] } | null = null;
 // UI helpers
 // -------------------------------------------------------------------------
 
-/** Show/hide the settings gear button (only relevant in PvC mode). */
+/** Show/hide the settings gear button. Visible during active play in both modes. */
 function syncThinkTimeVisibility(): void {
-  const showSettings = gameMode === 'pvc';
-  $settingsBtn.classList.toggle('hidden', !showSettings);
+  $settingsBtn.classList.toggle('hidden', gameOver);
 }
 
 /** Enable/disable the Redo button based on game state. */
@@ -696,7 +695,15 @@ function onRedoClick(): void {
 }
 
 function onUndoClick(): void {
-  if (gameOver || aiThinking) return;
+  if (aiThinking) return;
+  if (game.history.length === 0) return;
+
+  // Undoing after game over reactivates the game.
+  if (gameOver) {
+    gameOver = false;
+    userClickedStart = true;
+    board.setEnabled(true);
+  }
 
   if (gameMode === 'pvp') {
     // PvP: undo exactly 1 move (the last player's move).
@@ -865,9 +872,10 @@ function endGame(msg: string): void {
   board.setEnabled(false);
   $hintBtn.classList.add('hidden');
   $swapBtn.classList.add('hidden');
-  $undoBtn.classList.add('hidden');
   $resignBtn.classList.add('hidden');
-  $thinkTimeSelect.classList.add('hidden');
+  $redoBtn.disabled = true;
+  syncThinkTimeVisibility();
+  // Undo stays visible so players can roll back and continue the game.
 }
 
 function setThinking(thinking: boolean): void {
