@@ -5,6 +5,22 @@ for future development of the twixtbot-app project.
 
 ---
 
+## Definition of Done
+
+Every feature implementation must satisfy all of the following before committing:
+
+1. **Tests** — automated tests cover the new logic. Pure functions must have unit tests.
+   Run `cd webapp && npm test -- --run` and confirm all tests pass.
+2. **Planned-features status** — update the feature's Status cell in
+   `docs/planned-features.md` from `Pending` to `**Done**`.
+3. **One commit per feature** — do not batch multiple features into one commit.
+4. **Imperative commit messages** — subject line in imperative mood
+   (e.g. "Add resign button (G2)" not "Added resign button").
+5. **No push until green** — only merge/push to main after tests are green
+   and the status update is staged in the same commit.
+
+---
+
 ## Git Workflow
 
 > **IMPORTANT: Always work directly on the `main` branch. Never create feature branches. Push to `origin main` after each logical change.**
