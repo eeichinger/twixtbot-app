@@ -14,9 +14,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,mjs}'],
       },
       manifest: {
-        name: 'TwixT vs AI',
+        name: 'TwixT Trainer',
         short_name: 'TwixT',
-        description: 'Play TwixT against a neural net AI — fully offline',
+        description: 'Learn, practise and analyse TwixT against a neural net AI — fully offline',
         start_url: '/twixtbot-app/index.html',
         display: 'standalone',
         orientation: 'portrait',

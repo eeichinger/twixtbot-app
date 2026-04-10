@@ -543,8 +543,8 @@ export class BoardUI {
     ctx.lineWidth   = 1;
     ctx.stroke();
 
-    // Coordinate label below the floating peg (between peg and finger).
-    this._drawCoordLabel(cx, cy + pegR * 2.2, ptToString(this.dragCell));
+    // Coordinate label above the floating peg.
+    this._drawCoordLabel(cx, cy - pegR * 2.2, ptToString(this.dragCell));
   }
 
   /** Draw a small dark pill with a coordinate label centred at (cx, cy). */
