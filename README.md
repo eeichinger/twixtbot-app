@@ -1,8 +1,8 @@
-# TwixT vs AI
+# TwixT Trainer
 
-A free web app that lets you play the board game **TwixT** against a computer
-opponent — or against a friend on the same device — with no download or account
-required.
+A free web app for learning, practising, and analysing the board game **TwixT** —
+play against a strong computer opponent, review your moves, and study expert games,
+with no download or account required.
 
 **Play now:** https://eeichinger.github.io/twixtbot-app/
 
