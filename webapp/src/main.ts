@@ -1240,6 +1240,7 @@ let replayGameAnalysisRunning = false;
 
 const $replayAnalyseBtn    = document.getElementById('replay-analyse-btn') as HTMLButtonElement;
 const $replayHeatmapBtn    = document.getElementById('replay-heatmap-btn') as HTMLButtonElement;
+const $replayPlayPvpBtn    = document.getElementById('replay-play-pvp-btn') as HTMLButtonElement;
 const $replayAnalysisPanel = document.getElementById('replay-analysis-panel')!;
 const $replayWinProbText   = document.getElementById('replay-win-prob-text')!;
 const $replayTop3Bars      = document.getElementById('replay-top3-bars')!;
@@ -1616,6 +1617,83 @@ function replayShowAtIndex(index: number): void {
   if (replayGameEvals.length > 0) drawReplayGameSparkline();
 }
 
+function switchReplayToPvP(): void {
+  if (!replayParsedGame) return;
+
+  // Reconstruct game state at the current replay position.
+  const g = new Game();
+  for (let i = 0; i < replayMoveIndex; i++) {
+    g.play(replayParsedGame.moves[i]);
+  }
+
+  // Switch to PvP mode and install the reconstructed game.
+  gameMode = 'pvp';
+  saveGameMode('pvp');
+  game = g;
+
+  // Reset ephemeral state (mirrors startNewGame()).
+  gameOver       = false;
+  aiThinking     = false;
+  tsgfResult     = '?';
+  heatmapActive  = false;
+  pendingHeatmap = false;
+  evalHistory    = [];
+  pendingAnalysis = null;
+  userClickedStart = true;
+
+  // Reset UI.
+  $winProbBar.style.opacity = '0';
+  $analysisPanel.classList.add('hidden');
+  $analysisPanel.classList.remove('expanded');
+  $moveListPanel.classList.add('hidden');
+  $moveListPanel.classList.remove('expanded');
+  $moveListBody.innerHTML = '';
+  $redoBtn.disabled = true;
+  $thinkingOverlay.classList.add('hidden');
+  $swapBtn.classList.add('hidden');
+  $undoBtn.classList.remove('hidden');
+  $heatmapBtn.classList.add('hidden');
+  $heatmapBtn.classList.remove('active');
+
+  board.setGame(game, false);
+
+  // Keep mode selector in sync with the new mode.
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector<HTMLButtonElement>('.mode-btn[data-mode="pvp"]')?.classList.add('active');
+
+  hideAllScreens();
+  $gameScreen.classList.remove('hidden');
+
+  diagLog(`replay-to-pvp move=${replayMoveIndex}`);
+
+  // If the board is already decided at this position, show the result immediately.
+  if (g.justWon()) {
+    const winner = g.turn === WHITE ? BLACK : WHITE;
+    tsgfResult = winner === WHITE ? 'B+' : 'W+';
+    syncMoveList();
+    endGame(resultMessage(winner, gameMode));
+    return;
+  }
+  if (g.legalPlays().length === 0) {
+    tsgfResult = '0';
+    syncMoveList();
+    endGame(resultMessage(null, gameMode));
+    return;
+  }
+
+  // Start PvP play from the current position.
+  syncMoveList();
+  syncThinkTimeVisibility();
+  updateSwapBtn();
+  board.setEnabled(true);
+  $statusText.textContent = turnStatusText(game.turn, gameMode);
+  syncHintButton();
+  syncResignButton();
+  syncHeatmapButton();
+  syncRedoButton();
+  startHeartbeat();
+}
+
 function updateReplayAnalysisPanel(topQ: number, top3: Top3Move[]): void {
   $replayWinProbText.textContent = formatWinProb(topQ);
   $replayAnalysisPanel.classList.remove('hidden');
@@ -1942,6 +2020,7 @@ function init(): void {
     if ($lgResults.children.length > 0) lgSetState('results');
   });
   $replayAnalyseBtn.addEventListener('click', () => requestReplayAnalysis());
+  $replayPlayPvpBtn.addEventListener('click', () => switchReplayToPvP());
   $replayHeatmapBtn.addEventListener('click', () => {
     if (replayHeatmapPending) return;
     replayHeatmapActive = !replayHeatmapActive;
