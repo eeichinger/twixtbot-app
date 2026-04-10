@@ -91,6 +91,20 @@ refining, not starting from scratch.
 All of these can be layered on top of each other. Most can be implemented in a few
 lines. They are listed roughly from easiest to most involved.
 
+### Which pipeline layer to attack
+
+The move-generation pipeline has four distinct stages. Techniques that act earlier
+in the pipeline have a larger effect because they influence what the search
+*explores*, not just what it *picks* at the end. The concentrated policy is the
+root cause of §2a, so pre-MCTS techniques are the most impactful.
+
+| Layer | What it controls | Current approach | Stronger weakening |
+|-------|-----------------|------------------|--------------------|
+| **Policy (pre-MCTS)** | Which moves MCTS explores | Raw NN logits — concentrated | Soften logits with temperature, or Dirichlet noise |
+| **Search** | Depth/width of tree | Trial limit, cpuct | Fewer trials, lower cpuct |
+| **Evaluation (leaf)** | Value signal per node | Full NN value head | Random/zero value on fraction of leaves |
+| **Move selection (post-MCTS)** | Final pick from visit counts | Temperature on visit counts | Limited — only randomises over already-visited moves |
+
 ### 3a · Trial limit reduction *(already in use)*
 
 **How it works:** `maxTrials` caps how many MCTS simulations run. Fewer trials →
@@ -107,25 +121,54 @@ starting point. See §2a.
 
 ---
 
-### 3b · Temperature sampling *(already in use)*
+### 3b · Temperature on visit counts *(already in use — limited)*
 
 **How it works:** After MCTS the visit-count array is raised to `1/T` and then
 sampled. Higher T → flatter → more random.
 
-**Effect:** At T → ∞ the selection becomes uniform over all visited moves. But note
-that only moves *visited by MCTS* appear in the distribution. With 50 trials and a
-concentrated policy, many of the 528 legal moves have zero visits and therefore zero
-weight even at T = ∞.
+**Effect:** At T → ∞ the selection becomes uniform over all *visited* moves. The
+critical limitation: with 50 trials and a concentrated policy, most of the 528 legal
+moves have zero visits and therefore zero weight regardless of T. The sampling pool
+is small and already pre-filtered by the network to good moves — so even very high
+temperature only randomises over that already-strong set.
 
-**Practical range:** T = 2.0 is already high. Moving to T = 5.0 or 10.0 further
-flattens the visited set. Alternatively, apply temperature to the *prior policy
-logits* (before MCTS), which would spread attention to more moves.
+**Practical range:** T = 2.0 is already high. Moving to T = 5.0 or 10.0 continues to
+flatten the visited set, but the ceiling is low because of the above.
 
 **Already wired:** Yes. `temperature` parameter in `BOT_STRENGTH_OPTIONS`.
 
 ---
 
-### 3c · Dirichlet noise at the MCTS root
+### 3c · Temperature on policy logits *(pre-MCTS — most direct fix)*
+
+**How it works:** Instead of (or in addition to) temperature on visit counts, apply
+a softening temperature directly to the raw policy logits *before* they are used as
+MCTS priors:
+
+```
+softened_logits[i] = logits[i] / policyTemperature
+```
+
+A high `policyTemperature` (e.g. 3–10) flattens the prior distribution that MCTS
+uses to select which children to expand. This causes MCTS to actually *explore* weak
+moves and accumulate visits there — so the final visit-count distribution is
+genuinely spread over weaker candidates, not just a skewed distribution over the
+network's top picks.
+
+**Why this is qualitatively different from §3b:** Visit-count temperature (§3b)
+randomises the *pick* from an already-strong visited set. Policy logit temperature
+degrades the *search itself* by forcing exploration of moves the network considers
+weak. Even with argmax final selection (T=0 on visit counts), a high policy
+temperature will cause the bot to find and play weaker moves.
+
+**Wiring needed:** `OnnxPlayer.eval()` in `onnx-player.ts` returns raw logits.
+Dividing by `policyTemperature` before they reach `NeuralMCTS` requires passing the
+parameter through the worker init message → `NeuralMCTS` constructor or the eval
+callback wrapper in `worker.ts:53–54`. A few lines of change.
+
+---
+
+### 3d · Dirichlet noise at the MCTS root
 
 **How it works:** Before each search, mix Dirichlet noise into the root's prior
 policy: `P'(a) = (1 − ε) · P(a) + ε · η(a)` where `η ~ Dir(α)`. AlphaZero uses
@@ -150,7 +193,7 @@ pick — makes the bot reason poorly, not just choose randomly from good options
 
 ---
 
-### 3d · Epsilon-softmax (sample from top-k, not top-1)
+### 3e · Epsilon-softmax (sample from top-k, not top-1)
 
 **How it works:** With probability `ε` replace the MCTS-selected move with a
 uniform random draw from the top-k (k = 5–10) MCTS moves by visit count; with
@@ -167,7 +210,7 @@ epsilon branch.
 
 ---
 
-### 3e · cpuct reduction
+### 3f · cpuct reduction
 
 **How it works:** The PUCT formula for child selection is
 `U(s,a) = cpuct · P(s,a) · √N(s) / (1 + N(s,a))`.
@@ -189,7 +232,7 @@ learnable by a human opponent.
 
 ---
 
-### 3f · Policy head degradation (uniform blending)
+### 3g · Policy head degradation (uniform blending)
 
 **How it works:** Interpolate the network's raw policy logits with a uniform
 distribution before MCTS: `P'(a) = λ · softmax(logits) + (1 − λ) · uniform`.
@@ -207,7 +250,7 @@ weaken play.
 
 ---
 
-### 3g · AlphaDDA dynamic difficulty adjustment
+### 3h · AlphaDDA dynamic difficulty adjustment
 
 **How it works:** From the AlphaDDA paper (2022), the core idea is to reduce
 `maxTrials` adaptively based on the *current evaluation*: when the bot is clearly
@@ -230,7 +273,7 @@ wrapper around the `mcts` call would check the root Q and adjust `maxTrials` /
 
 ---
 
-### 3h · Disable immediate-win detection
+### 3i · Disable immediate-win detection
 
 **How it works:** Remove (or gate behind difficulty level) the unconditional win
 scan in `worker.ts:176–185`. On easy difficulty the bot would sometimes miss a
@@ -246,20 +289,26 @@ worker message payload.
 
 ---
 
-### 3i · Random rollout fallback (partial NN bypass)
+### 3j · Value head degradation (partial NN bypass)
 
 **How it works:** With probability `pRandom` (per MCTS leaf), skip the NN
-inference entirely and return a uniformly random value estimate (e.g. 0) plus
-uniform policy. This degrades evaluation quality for a fraction of leaves,
-making the search noisier.
+inference entirely and return a neutral value estimate (0 = draw) plus uniform
+policy. This degrades the *evaluation* side of the search — MCTS can no longer
+reliably tell good positions from bad ones at the nodes where the dummy is used.
 
-**Effect:** Reduces effective NN calls proportionally; combined with trial limits
-this can make the search much weaker than either technique alone. However the
-effect is stochastic and hard to calibrate precisely.
+**Why this attacks a different axis than §3c:** Policy temperature (§3c) causes
+MCTS to *explore* weak moves. Value degradation causes MCTS to *misevaluate*
+positions, so even well-explored branches may back-propagate the wrong signal.
+The combination of both — exploring randomly AND evaluating poorly — is the most
+effective single-model weakening strategy.
+
+**Effect:** At `pRandom = 0.5`, half of all leaf evaluations return noise. The
+search becomes significantly weaker than trial-limit reduction alone because many
+of the 50 trials waste their signal on dummy evaluations.
 
 **Wiring needed:** Modify the evaluation callback passed to `NeuralMCTS` in
 `worker.ts:53–54` to sometimes return a dummy result instead of calling
-`player.eval()`.
+`player.eval()`. One wrapper function, ~10 lines.
 
 ---
 
@@ -288,9 +337,10 @@ The goal for twixtbot-app is *fun and approachable play*, not *human-like mistak
 at a specific Elo*. The techniques in §3 can achieve a wide range of effective
 strengths on a single model:
 
-- At the weak extreme (§3h disabled win scan + §3c strong Dirichlet noise + §3b
-  high temperature + §3a 3–10 trials) the bot makes outright blunders and misses
-  obvious threats — approximately beginner-to-casual level.
+- At the weak extreme (§3i disabled win scan + §3d strong Dirichlet noise + §3c
+  high policy temperature + §3b flattened visit sampling + §3a 3–10 trials) the bot
+  makes outright blunders and misses obvious threats — approximately beginner-to-casual
+  level.
 - At the strong extreme (current Master preset: 100 K trials, T = 0) the bot plays
   near its trained ceiling.
 
@@ -304,18 +354,25 @@ lines of code, not weeks of training.
 
 ### Proposed four-level preset table
 
-| Preset | maxTrials | temperature | cpuct | addNoise ε | Notes |
-|--------|-----------|-------------|-------|------------|-------|
-| Novice | 5 | 5.0 | 0.2 | 0.5 | Disable win scan; noisy, makes blunders |
-| Beginner | 50 | 2.0 | 0.5 | 0.0 | Current Beginner — still sharp |
-| Club | 500 | 0.5 | 0.5 | 0.0 | Current Club |
-| Master | 100 000 | 0 | 0.5 | 0.0 | Current Master |
+| Preset | maxTrials | policyTemp | visitTemp | cpuct | addNoise ε | Notes |
+|--------|-----------|------------|-----------|-------|------------|-------|
+| Novice | 5 | 5.0 | 3.0 | 0.2 | 0.5 | Disable win scan; makes blunders |
+| Beginner | 50 | 1.0 | 2.0 | 0.5 | 0.0 | Current Beginner — still sharp |
+| Club | 500 | 1.0 | 0.5 | 0.5 | 0.0 | Current Club |
+| Master | 100 000 | 1.0 | 0 | 0.5 | 0.0 | Current Master |
 
-**Novice** targets players who have never played TwixT. The combination of 5
-trials, high temperature, low cpuct, and strong Dirichlet noise makes the bot play
-the network's first instinct (barely any search), then randomly selects from a
-flattened distribution over visited moves. Disabling the win scan makes the bot
-occasionally miss obvious finishes, which keeps early games playable.
+`policyTemp` = temperature applied to raw logits before MCTS (§3c, new).
+`visitTemp` = temperature applied to visit counts after MCTS (§3b, current `temperature`).
+
+**Novice** targets players who have never played TwixT. The combination of:
+- 5 trials (barely any tree)
+- high policy temperature (forces exploration of weak moves)
+- high visit temperature (further flattens the already-noisy visited set)
+- low cpuct (commits to first instinct, no tactical checking)
+- strong Dirichlet noise (random exploration at root)
+- disabled win scan (bot occasionally misses forced wins)
+
+makes the bot play imprecisely and miss threats, while still placing legal moves.
 
 **Validation:** The recommended way to test strength changes is to run 50–100 bot
 self-play games (Master vs Novice, Master vs Beginner) and measure win rates.
@@ -326,14 +383,18 @@ A reasonable target:
 
 ### Implementation priority
 
-1. **Quickest win:** Add a `Novice` preset with `maxTrials=5, temperature=5.0`.
-   Zero new code beyond the preset table change (`main.ts:52`). This alone may be
-   sufficient for most casual players.
+1. **Quickest win:** Add `policyTemperature` to the eval callback in `worker.ts:53–54`
+   and expose it in `BOT_STRENGTH_OPTIONS`. Set Novice to `policyTemp=5.0`. This
+   directly addresses the root cause (concentrated policy) and is ~10 lines of code.
 
-2. **Medium effort:** Wire `cpuct` and `addNoise` (already constructor params in
+2. **Add a Novice preset:** `maxTrials=5, policyTemp=5.0, visitTemp=3.0`. Zero extra
+   logic beyond the preset table change (`main.ts:52`) once policy temperature is
+   wired in step 1.
+
+3. **Medium effort:** Wire `cpuct` and `addNoise` (already constructor params in
    `NeuralMCTS`) through to the preset table. Expose a `noiseAlpha` field.
 
-3. **Longer term:** Implement AlphaDDA (§3g) as a "Adaptive" mode that adjusts
+4. **Longer term:** Implement AlphaDDA (§3h) as an "Adaptive" mode that adjusts
    strength automatically to keep games close. This is the most engaging experience
    for new players.
 
@@ -345,12 +406,14 @@ New entries to append to section **1 · AI / MCTS Algorithm**:
 
 | ID | Feature | Priority | Notes |
 |----|---------|----------|-------|
-| A7 | Add Novice preset (5 trials, T=5.0) | P1 | Zero new code; just extend BOT_STRENGTH_OPTIONS |
-| A8 | Wire cpuct per difficulty level | P2 | cpuct already a NeuralMCTS constructor arg; expose in preset table |
-| A9 | Wire Dirichlet noise ε per difficulty | P2 | addNoise already wired to 0.0; add noiseAlpha param and expose |
-| A10 | Epsilon-softmax top-k selection | P3 | New branch in pickMoveWithTemperature; controllable blunder rate |
-| A11 | AlphaDDA adaptive difficulty | P3 | Adjust maxTrials/temperature based on value head output at root |
-| A12 | Gate immediate-win detection on difficulty | P3 | Allow Novice/Beginner to miss forced wins; feels more human |
+| A7 | Policy logit temperature per difficulty | P1 | Divide raw logits by policyTemp before MCTS; ~10 lines in worker.ts eval callback. Most direct fix for concentrated policy. |
+| A8 | Add Novice preset (5 trials, policyTemp=5.0) | P1 | Depends on A7; extend BOT_STRENGTH_OPTIONS with Novice row |
+| A9 | Wire cpuct per difficulty level | P2 | cpuct already a NeuralMCTS constructor arg; expose in preset table |
+| A10 | Wire Dirichlet noise ε per difficulty | P2 | addNoise already wired to 0.0; add noiseAlpha param and expose |
+| A11 | Epsilon-softmax top-k selection | P3 | New branch in pickMoveWithTemperature; controllable blunder rate |
+| A12 | AlphaDDA adaptive difficulty | P3 | Adjust maxTrials/temperature based on value head output at root |
+| A13 | Gate immediate-win detection on difficulty | P3 | Allow Novice/Beginner to miss forced wins; feels more human |
+| A14 | Value head degradation (partial NN bypass) | P3 | Return dummy eval on pRandom fraction of leaves; degrades position assessment independently of policy |
 
 ---
 
