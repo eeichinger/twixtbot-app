@@ -86,6 +86,16 @@ html, body {
 #intro-screen .bp-logo-cap { font-size: 1em; }
 #intro-screen .bp-logo-sm  { font-size: 0.62em; vertical-align: baseline; }
 
+/* "Trainer" subtitle under the logo */
+.bp-trainer {
+  font-family: 'Courier Prime', monospace;
+  font-size: clamp(12px, 3.5vw, 16px);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: rgba(100,160,220,0.65);
+  margin: 0 0 8px;
+}
+
 /* Subtitle row — single continuous rule */
 .bp-subtitle-line {
   width: 100%;

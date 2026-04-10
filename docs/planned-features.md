@@ -86,6 +86,7 @@ The worker already sends much of this data — it just isn't surfaced in the UI.
 | G2 | Resign | P2 | Low | **Done** | Explicit resign button ending the game as a loss for the resigning player. Auto-resign threshold (configurable, default 0.95 opponent win prob) is a nice-to-have extension. Present in twixtbot-ui. |
 | G3 | Bot vs Bot mode | P3 | Medium | Won't do | Not a priority for this app's focus on human play and learning. |
 | G4 | Allow crossing own links (SCL) | P3 | Medium | Pending | Rule variant: a player's own links may cross each other (non-standard). Present in twixtbot-ui. Off by default. |
+| G5 | Continue replay as PvP | P2 | Low | **Done** | "Play PvP" button in replay header; switches to game screen with the board state at the current replay position, enabling PvP play to continue from that point. |
 
 ---
 
