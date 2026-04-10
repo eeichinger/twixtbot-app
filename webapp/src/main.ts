@@ -1655,14 +1655,16 @@ function switchReplayToPvP(): void {
   $heatmapBtn.classList.add('hidden');
   $heatmapBtn.classList.remove('active');
 
-  board.setGame(game, false);
-
   // Keep mode selector in sync with the new mode.
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   document.querySelector<HTMLButtonElement>('.mode-btn[data-mode="pvp"]')?.classList.add('active');
 
+  // Show the game screen before calling board.setGame() so the canvas container
+  // has non-zero dimensions when _resize() reads clientWidth/clientHeight.
   hideAllScreens();
   $gameScreen.classList.remove('hidden');
+
+  board.setGame(game, false);
 
   diagLog(`replay-to-pvp move=${replayMoveIndex}`);
 
