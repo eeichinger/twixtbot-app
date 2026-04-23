@@ -29,14 +29,17 @@ class NNEvaluater:
         device (str):  Torch device string, e.g. 'cpu' or 'cuda'.
     """
 
-    def __init__(self, model_or_path, device='cpu', compiled=False):
+    def __init__(self, model_or_path, device='cpu', compiled=False, fp16=False):
         self.device = device
+        self.fp16 = fp16 and device != 'cpu'
         if isinstance(model_or_path, str):
             net = torch.load(model_or_path, map_location=device,
                              weights_only=False)
         else:
             net = model_or_path
         self.model = net.eval().to(device)
+        if self.fp16:
+            self.model = self.model.half()
         if compiled:
             self.model = torch.compile(self.model, mode='reduce-overhead')
 
@@ -76,7 +79,10 @@ class NNEvaluater:
         """
         def to_tensor(arr):
             t = torch.from_numpy(numpy.asarray(arr, dtype=numpy.float32))
-            return t.permute(0, 3, 1, 2).to(self.device)  # NHWC → NCHW
+            t = t.permute(0, 3, 1, 2).to(self.device)  # NHWC → NCHW
+            if self.fp16:
+                t = t.half()
+            return t
 
         pegs_t  = to_tensor(pegs)
         links_t = to_tensor(links)
