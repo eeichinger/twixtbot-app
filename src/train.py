@@ -257,6 +257,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Train TwixNet on self-play data')
     parser.add_argument('--model', '-m', type=str, required=True,
                         help='Path to model .pt file (loaded and saved in-place)')
+    parser.add_argument('--device', '-d', type=str, default='cpu',
+                        help='torch device string, e.g. "cpu" or "cuda:0"')
     parser.add_argument('--batch_size', '-b', type=int, default=256)
     parser.add_argument('--num_batches', '-n', type=int, default=1000)
     parser.add_argument('--learning_rate', '-L', type=float, default=0.01)
@@ -271,7 +273,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     print(f'Loading model: {args.model}')
-    model = torch.load(args.model, weights_only=False)
+    model = torch.load(args.model, weights_only=False, device=args.device)
     trainer = Trainer(model, learning_rate=args.learning_rate)
 
     if args.num_batches > 0:
@@ -312,7 +314,7 @@ def main(argv=None):
         print(f'batch {b}')
         batch_states = [sample_learning_state(selector)
                         for _ in range(args.batch_size)]
-        batch = prepare_batch(batch_states, args.temperature, args.policy_epsilon)
+        batch = prepare_batch(batch_states, args.temperature, args.policy_epsilon, device=args.device)
         total, l1, l2 = trainer.train_step(*batch)
 
         x = numpy.array([1, b])

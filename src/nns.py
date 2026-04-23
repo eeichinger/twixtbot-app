@@ -13,6 +13,7 @@ import twixt
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-l", "--location", type=str, required=True)
+parser.add_argument("-d", "--device", type=str, default="cpu")
 parser.add_argument("-m", "--model", type=str, required=False)
 parser.add_argument("-k", "--kill", action='store_true')
 parser.add_argument("-c", "--capacity", type=int, default=200)
@@ -30,7 +31,7 @@ if args.model is None:
 else:
     model = args.model
 
-ne = nneval.NNEvaluater(model)
+ne = nneval.NNEvaluater(model, device=args.device)
 
 class NNServer(smmpp.Server):
     def run_jobs(self, jobs):
