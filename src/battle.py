@@ -192,6 +192,7 @@ class ThreadingManager:
         self.job_request_queue = queue.Queue()
         self.new_job_queue = queue.Queue()
         self.done_job_queue = queue.Queue()
+        self.worker_error = None
 
     def job_maker_thread_run(self):
         n = 0
@@ -210,16 +211,29 @@ class ThreadingManager:
         # end job_maker_thread_run(self):
 
     def worker_thread_run(self):
-        while True:
-            self.job_request_queue.put("r")
-            job = self.new_job_queue.get()
-            job.battle()
-            self.done_job_queue.put(job)
+        try:
+            while True:
+                self.job_request_queue.put("r")
+                job = self.new_job_queue.get()
+                job.battle()
+                self.done_job_queue.put(job)
+        except Exception as e:
+            # Capture the exception so completion_thread_run can re-raise it
+            # in the main thread; push a sentinel to unblock its .get().
+            import traceback
+            self.worker_error = e
+            print(when(), "worker thread failed:", e, file=sys.stderr)
+            traceback.print_exc()
+            sys.stderr.flush()
+            self.done_job_queue.put(None)
 
     def completion_thread_run(self):
         scores = [0, 0]
         for n in range(self.args.num_games):
             fin = self.done_job_queue.get()
+            if fin is None:
+                raise RuntimeError(
+                    f"worker thread died: {self.worker_error!r}") from self.worker_error
             parity = 0 if fin.black_spec == args.black else 1
             if fin.win_color is None:
                 scores[0] += 0.5
