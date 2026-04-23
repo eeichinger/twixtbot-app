@@ -39,7 +39,7 @@ class NNEvaluater:
             net = model_or_path
         self.model = net.eval().to(device)
         if compiled:
-            self.model = torch.compile(self.model, mode='reduce-overhead')
+            self.model = torch.compile(self.model, mode='default')
 
     def pwin_size(self):
         """Return the number of value outputs — always 3 (Loss/Draw/Win)."""
