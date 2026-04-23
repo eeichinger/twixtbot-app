@@ -82,18 +82,23 @@ _weight_re = re.compile(r'w=([0-9]*\.?[0-9]+)')
 def load_selector(selector, name):
     """Recursively add a file or directory of self-play data to *selector*.
 
-    A basename matching 'w=<float>' changes the default basket weight for
-    subsequent adds in this subtree.
+    A basename that is exactly 'w=<float>' changes the default basket weight
+    for subsequent adds in this subtree. Supports two patterns:
+      - a directory named 'w=<float>/' — weight applies to files inside it
+      - a bare CLI argument 'w=<float>' that is neither file nor directory —
+        weight applies to subsequent positional arguments
 
     Returns:
         (num_files, num_rows)
     """
     num_files = 0
     num_rows = 0
-    mo = _weight_re.match(os.path.basename(name))
+    mo = _weight_re.fullmatch(os.path.basename(name))
     if mo:
         selector.set_default_weight(float(mo.group(1)))
-        return 0, 0
+        if not os.path.isdir(name):
+            return 0, 0
+        # fall through: recurse into this directory with the new default weight
     if os.path.isdir(name):
         for sub in sorted(os.listdir(name)):
             f, r = load_selector(selector, os.path.join(name, sub))
