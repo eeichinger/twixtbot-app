@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-       "Bash(wsl -d Ubuntu -- bash -c *",
-      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/**)"
-    ]
-  }
-}
