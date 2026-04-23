@@ -1,0 +1,61 @@
+query_size= 5772 reply_size= 2124 my_slots=[ 1247,1246,1245,1244,1243,1242,1241,1240,1239,1238,1237,1236,1235,1234,1233,1232,1231,1230,1229,1228,1227,1226,1225,1224,1223,1222,1221,1220,1219,1218,1217,1216 ]
+query_size= 5772 reply_size= 2124 my_slots=[ 1215,1214,1213,1212,1211,1210,1209,1208,1207,1206,1205,1204,1203,1202,1201,1200,1199,1198,1197,1196,1195,1194,1193,1192,1191,1190,1189,1188,1187,1186,1185,1184 ]
+Exception in thread Thread-3 (worker_thread_run):
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+    self.run()
+query_size= 5772 reply_size= 2124 my_slots=[ 1279,1278,1277,1276,1275,1274,1273,1272,1271,1270,1269,1268,1267,1266,1265,1264,1263,1262,1261,1260,1259,1258,1257,1256,1255,1254,1253,1252,1251,1250,1249,1248 ]
+  File "/usr/lib/python3.12/threading.py", line 1010, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 205, in worker_thread_run
+    job.battle()
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 29, in battle
+    self.win_color, self.final_score = battle_once(black_th, white_th, self.init_moves, self.train_list, self.move_list)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 89, in battle_once
+    policy_array = naf.single_move_policy_array(game, m)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/naf.py", line 465, in single_move_policy_array
+    a[policy_point_index(thing, move)] = 1
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/naf.py", line 386, in policy_point_index
+    major = point.y - 1
+            ^^^^^^^
+AttributeError: 'str' object has no attribute 'y'
+query_size= 5772 reply_size= 2124 my_slots=[ 1183,1182,1181,1180,1179,1178,1177,1176,1175,1174,1173,1172,1171,1170,1169,1168,1167,1166,1165,1164,1163,1162,1161,1160,1159,1158,1157,1156,1155,1154,1153,1152 ]
+Exception in thread Thread-2 (worker_thread_run):
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.12/threading.py", line 1010, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 205, in worker_thread_run
+    job.battle()
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 29, in battle
+    self.win_color, self.final_score = battle_once(black_th, white_th, self.init_moves, self.train_list, self.move_list)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 89, in battle_once
+    policy_array = naf.single_move_policy_array(game, m)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/naf.py", line 465, in single_move_policy_array
+    a[policy_point_index(thing, move)] = 1
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/naf.py", line 386, in policy_point_index
+    major = point.y - 1
+            ^^^^^^^
+AttributeError: 'str' object has no attribute 'y'
+Traceback (most recent call last):
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 301, in <module>
+    if args.training_file:
+        ^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 251, in go
+    for i in range(args.threads):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspaces/twixtbot-app/src/battle.py", line 211, in completion_thread_run
+    self.done_job_queue.put(job)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/queue.py", line 171, in get
+    self.not_empty.wait()
+  File "/usr/lib/python3.12/threading.py", line 355, in wait
+    waiter.acquire()
+KeyboardInterrupt

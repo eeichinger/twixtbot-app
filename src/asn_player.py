@@ -59,7 +59,7 @@ class Player:
 
     def _process_incoming_data(self, request_block):
         if debug:
-            print "_pid, lw=", self.leaves_waiting
+            print("_pid, lw=", self.leaves_waiting)
         incoming_data = request_block
         if self.leaves_waiting >= self.async_calls:
             incoming_data = True
@@ -67,7 +67,7 @@ class Player:
         elif self.leaves_waiting > 0:
             rl, _, _ = select.select([self.client.socket], [], [], 0)
             if rl:
-                incoming_daa = True
+                incoming_data = True
 
         if incoming_data:
             self._block_until_reply()
@@ -103,7 +103,7 @@ class Player:
 
     def _expand_leaf(self, parent, parent_index):
         if debug and parent is not None:
-            print "expand_leaf @",self._stack_string()
+            print("expand_leaf @", self._stack_string())
         leaf = Node()
         leaf.parent = parent
         leaf.parent_index = parent_index
@@ -186,7 +186,7 @@ class Player:
 
     def _go_to_child(self, parent, child_index):
         if debug:
-            print "go_to @",self._stack_string()
+            print("go_to @", self._stack_string())
         move = naf.policy_index_point(self.game.turn, child_index)
         subnode = parent.subnodes[child_index]
         self.game.play(move)
@@ -201,7 +201,7 @@ class Player:
                 subnode.proven = True
                 subnode.winning_index = None
                 subnode.score = -1
-                self.finished_leves.append(subnode)
+                self.finished_leaves.append(subnode)
                 r = 1
             else:
                 assert gc_index >= 0
@@ -238,7 +238,7 @@ class Player:
                         p.score = -1
                 else:
                     if debug:
-                        print "index=",index,"score=",score,"pqi=",p.Q[index],"pnf=",p.Nf[index]
+                        print("index=", index, "score=", score, "pqi=", p.Q[index], "pnf=", p.Nf[index])
                     p.Q[index] += (score - p.Q[index]) / p.Nf[index]
 
                 c = p

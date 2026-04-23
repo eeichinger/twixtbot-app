@@ -84,6 +84,11 @@ def battle_once(black_th, white_th, moves, train_list, move_list=None):
                     print("%d moves." % len(game.history))
                 final_score = 1
                 return 1-game.turn, final_score
+            elif m == "swap":
+                if train_list is not None:
+                    train_list.pop()
+                game.play(m)
+                continue
 
             if train_list is not None:
                 policy_array = naf.single_move_policy_array(game, m)
