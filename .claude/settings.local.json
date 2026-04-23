@@ -1,16 +1,8 @@
 {
   "permissions": {
-    "additionalDirectories": [
-      "///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app"
-    ],
     "allow": [
-      "Read",
-      "Write",
-      "Create",
-      "Delete",
-      "Update",
-      "Bash",
-      "Git"
-     ]
+       "Bash(wsl -d Ubuntu -- bash -c *",
+      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/**)"
+    ]
   }
 }
