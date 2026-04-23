@@ -10,5 +10,5 @@ node_modules/
 # WASM/JS files copied from node_modules by prebuild script — not committed
 webapp/public/*.wasm
 webapp/public/*.mjs
-#spdata/
-#logs/
+spdata/
+logs/
