@@ -12,3 +12,4 @@ webapp/public/*.wasm
 webapp/public/*.mjs
 spdata/
 logs/
+.claude/settings.local.json

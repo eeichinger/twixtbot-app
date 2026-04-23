@@ -5,6 +5,7 @@ import datetime
 import os
 import subprocess
 import sys
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num_clones", "-n", type=int, required=True)
@@ -41,8 +42,14 @@ os.close(0)
 ProcInfo = namedtuple('ProcInfo', ['p', 'id', 'fileobj'])
 procmap = dict()
 
+_start_time = time.time()
+_last_progress = _start_time
+_PROGRESS_INTERVAL = 60
+_total = args.num_clones
+_completed = 0
+
 for i in range(args.num_clones):
-    print("start instance #%d" % i)
+    print(when(), "start instance #%d" % i)
     sys.stdout.flush()
     name = "%0*d" % (num_digits, i)
     outfile = os.path.join(args.log_dir, name + ".log")
@@ -53,10 +60,8 @@ for i in range(args.num_clones):
     procmap[p.pid] = proc
 
 while procmap:
-    if len(procmap) % 5 == 0:
-        print("remaining jobs:", " ".join(["%0*d" % (num_digits, proc.id) for proc in sorted(procmap.values(), key=lambda x: x.id)]))
-
     (pid, status) = os.wait()
+    _completed += 1
     proc = procmap[pid]
     signum = status & 0xff
     xcode = (status >> 8) & 0xff
@@ -66,12 +71,23 @@ while procmap:
         print(when(), "instance %d exited with status %d" % (proc.id, xcode))
     else:
         print(when(), "instance %d finished happily" % (proc.id))
-    sys.stdout.flush()
-
     proc.p.wait()
     proc.fileobj.close()
     del procmap[pid]
 
+    now = time.time()
+    elapsed = now - _start_time
+    if now - _last_progress >= _PROGRESS_INTERVAL:
+        remaining_ids = " ".join(["%0*d" % (num_digits, p.id)
+                                  for p in sorted(procmap.values(), key=lambda x: x.id)])
+        rate = _completed / elapsed if elapsed > 0 else 0
+        eta = len(procmap) / rate if rate > 0 else 0
+        print(when(), "progress %d/%d done | elapsed %.0fs | ETA ~%.0fs | remaining: %s" % (
+            _completed, _total, elapsed, eta, remaining_ids or "none"))
+        _last_progress = now
 
-print(when(), "all instances finished.")
+    sys.stdout.flush()
+
+elapsed_total = time.time() - _start_time
+print(when(), "all instances finished. Total: %.1fs (%.1f min)" % (elapsed_total, elapsed_total / 60))
 log_f.close()

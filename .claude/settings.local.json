@@ -9,7 +9,8 @@
       "Bash(wsl -d Ubuntu -- bash -c 'cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c \" *)",
       "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/logs/**)",
       "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/**)",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c 'import sys; sys.path.insert\\(0,\\\\\"src\\\\\"\\); import battle; print\\(\\\\\"OK\\\\\"\\)'\")"
+      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c 'import sys; sys.path.insert\\(0,\\\\\"src\\\\\"\\); import battle; print\\(\\\\\"OK\\\\\"\\)'\")",
+      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/logs/sp_gen/**)"
     ]
   }
 }

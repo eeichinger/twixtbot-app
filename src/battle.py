@@ -6,9 +6,13 @@ import queue
 import random
 import sys
 import threading
+import time
 
 import naf
 import twixt
+
+def when():
+    return time.strftime("%Y%m%d %H:%M:%S")
 
 class BattleSpec:
     def __init__(self, black_spec, white_spec, init_moves, with_training=True):
@@ -136,6 +140,7 @@ def unthreaded_run():
     names = [args.black, args.white]
     thinker = [twixt.get_thinker(n, resources) for n in names]
     scores = [0.0, 0.0]
+    start_time = time.time()
 
     for n in range(args.num_games):
         parity = n % 2
@@ -167,7 +172,8 @@ def unthreaded_run():
                 train_file.flush()
 
         pct = 100.0*scores[0]/(scores[0]+scores[1])
-        print("After %d game%s..." % (n+1, "" if n==0 else "s"))
+        elapsed = time.time() - start_time
+        print("%s After %d/%d game%s (%.0fs elapsed)..." % (when(), n+1, args.num_games, "" if n==0 else "s", elapsed))
         print(": %5.1f (%5.1f%%) %s" % (scores[0], pct, thinker[0].name))
         print(": %5.1f (%5.1f%%) %s" % (scores[1], 100-pct, thinker[1].name))
         sys.stdout.flush()
@@ -235,15 +241,19 @@ class ThreadingManager:
                     train_file.flush()
 
             pct = 100.0*scores[0]/(scores[0]+scores[1])
-            print("After %d game%s..." % (n+1, "" if n==0 else "s"))
+            elapsed = time.time() - self.start_time
+            print("%s After %d/%d game%s (%.0fs elapsed)..." % (when(), n+1, self.args.num_games, "" if n==0 else "s", elapsed))
             print(": %5.1f (%5.1f%%) %s" % (scores[0], pct, args.black))
             print(": %5.1f (%5.1f%%) %s" % (scores[1], 100-pct, args.white))
 
-        print("ALL GAMES DONE")
+        elapsed = time.time() - self.start_time
+        gpm = self.args.num_games / elapsed * 60 if elapsed > 0 else 0
+        print("%s ALL GAMES DONE in %.1fs (%.1f games/min)" % (when(), elapsed, gpm))
         # end completion_thread
         sys.stdout.flush()
 
     def go(self):
+        self.start_time = time.time()
         jmt = threading.Thread(target=self.job_maker_thread_run)
         jmt.daemon = True
         jmt.start()
