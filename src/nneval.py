@@ -38,8 +38,6 @@ class NNEvaluater:
         else:
             net = model_or_path
         self.model = net.eval().to(device)
-        if self.fp16:
-            self.model = self.model.half()
         if compiled:
             self.model = torch.compile(self.model, mode='reduce-overhead')
 
@@ -79,17 +77,18 @@ class NNEvaluater:
         """
         def to_tensor(arr):
             t = torch.from_numpy(numpy.asarray(arr, dtype=numpy.float32))
-            t = t.permute(0, 3, 1, 2).to(self.device)  # NHWC → NCHW
-            if self.fp16:
-                t = t.half()
-            return t
+            return t.permute(0, 3, 1, 2).to(self.device)  # NHWC → NCHW
 
         pegs_t  = to_tensor(pegs)
         links_t = to_tensor(links)
         locs_t  = to_tensor(locs)
 
         with torch.no_grad():
-            policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
+            if self.fp16:
+                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                    policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
+            else:
+                policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
 
         mls = policy_logits.cpu().numpy().astype(numpy.float32)  # (N, 528)
         pws = value_logits.cpu().numpy().astype(numpy.float32)   # (N, 3)
