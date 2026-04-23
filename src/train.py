@@ -273,7 +273,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     print(f'Loading model: {args.model}')
-    model = torch.load(args.model, weights_only=False, device=args.device)
+    model = torch.load(args.model, weights_only=False, map_location=args.device)
     trainer = Trainer(model, learning_rate=args.learning_rate)
 
     if args.num_batches > 0:
