@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -175,7 +176,21 @@ def rotate_spdata_tiers(iteration, log):
 # =============================================================================
 
 def start_nns(model_path, iter_log_path, log):
-    """Spawn the NNS as a background process. Returns (Popen, file handle)."""
+    """Spawn the NNS as a background process. Returns (Popen, file handle).
+
+    Removes any stale .sock / .shm files left by a previous NNS run before
+    launching — otherwise wait_for_nns_ready could race against the old
+    socket file during NNS's torch import / model load window.
+    """
+    for suffix in ('.sock', '.shm'):
+        stale = NNS_SOCKET + suffix
+        if os.path.exists(stale):
+            log(f"removing stale {stale}")
+            try:
+                os.remove(stale)
+            except OSError as e:
+                log(f"  could not remove {stale}: {e}")
+
     cmd = [
         sys.executable, 'src/nns.py',
         '--location', NNS_SOCKET,
@@ -195,6 +210,12 @@ def start_nns(model_path, iter_log_path, log):
 
 
 def wait_for_nns_ready(nns_proc, log):
+    """Wait until NNS actually accepts unix-socket connections.
+
+    Checking os.path.exists() alone is unreliable: a stale .sock file from a
+    prior crashed NNS satisfies the check instantly. Here we try a real
+    connect() every second so we only succeed when NNS is truly listening.
+    """
     socket_path = NNS_SOCKET + '.sock'
     start = time.time()
     while time.time() - start < NNS_READY_TIMEOUT_SEC:
@@ -202,11 +223,18 @@ def wait_for_nns_ready(nns_proc, log):
             raise RuntimeError(
                 f"NNS exited during startup (code {nns_proc.returncode}); "
                 f"check its log file")
-        if os.path.exists(socket_path):
-            log(f"NNS ready (socket at {socket_path})")
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(1.0)
+        try:
+            s.connect(socket_path)
+            log(f"NNS ready (accepting connections at {socket_path})")
             return
-        time.sleep(0.5)
-    raise TimeoutError(f"NNS socket {socket_path} did not appear within "
+        except (FileNotFoundError, ConnectionRefusedError, OSError):
+            pass  # not ready yet; retry
+        finally:
+            s.close()
+        time.sleep(1.0)
+    raise TimeoutError(f"NNS did not accept connections within "
                        f"{NNS_READY_TIMEOUT_SEC}s")
 
 
