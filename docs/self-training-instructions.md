@@ -22,6 +22,24 @@ The pipeline has three repeating phases:
 
 ---
 
+## Preliminaries — System Packages
+
+Before anything else, install these WSL2 system packages. Missing any of them causes
+cryptic errors deep inside PyTorch or Triton rather than a clear "package not found".
+
+```bash
+apt-get install -y python3.12-dev
+```
+
+- **`python3.12-dev`** — Python development headers (`Python.h`). Required by
+  `torch.compile`: Triton JIT-compiles GPU kernels at runtime and builds a small
+  C extension that `#include`s `Python.h`. Without it you get
+  `fatal error: Python.h: No such file or directory` on the first NNS run with
+  `--compile`. The compiled kernels are cached after the first run, so this is a
+  one-time cost.
+
+---
+
 ## Step 1 — WSL2 + CUDA Setup
 
 ### 1a. Install WSL2
