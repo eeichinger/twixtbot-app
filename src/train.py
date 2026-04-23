@@ -274,6 +274,7 @@ def main(argv=None):
 
     print(f'Loading model: {args.model}')
     model = torch.load(args.model, weights_only=False, map_location=args.device)
+    model = model.to(args.device)
     trainer = Trainer(model, learning_rate=args.learning_rate)
 
     if args.num_batches > 0:
