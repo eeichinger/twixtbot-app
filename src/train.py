@@ -15,6 +15,7 @@ import os
 import random
 import re
 import sys
+import time
 
 import naf
 import twixt
@@ -24,6 +25,10 @@ import torch
 import torch.nn.functional as F
 
 from model import TwixNet
+
+
+def when():
+    return time.strftime("%Y%m%d %H:%M:%S")
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +315,11 @@ def main(argv=None):
     XY = numpy.zeros(2)
     prev_loss = None
 
+    start_time = time.time()
+    last_progress = start_time
+    PROGRESS_INTERVAL = 30.0
+    print(f'{when()} training start: {args.num_batches} batches, batch_size={args.batch_size}, device={args.device}')
+
     for b in range(args.num_batches):
         print(f'batch {b}')
         batch_states = [sample_learning_state(selector)
@@ -337,11 +347,25 @@ def main(argv=None):
             print('save it')
             torch.save(model, args.model)
 
+        now = time.time()
+        if now - last_progress >= PROGRESS_INTERVAL:
+            elapsed = now - start_time
+            done = b + 1
+            rate = done / elapsed if elapsed > 0 else 0
+            remaining = args.num_batches - done
+            eta = remaining / rate if rate > 0 else 0
+            print(f'{when()} progress {done}/{args.num_batches} | elapsed {elapsed:.0f}s | {rate:.2f} batch/s | ETA {eta:.0f}s | loss={total:.4g}')
+            last_progress = now
+
         sys.stdout.flush()
 
     if args.num_batches > 0:
         print('save it')
         torch.save(model, args.model)
+        elapsed = time.time() - start_time
+        rate = args.num_batches / elapsed if elapsed > 0 else 0
+        samples = args.num_batches * args.batch_size
+        print(f'{when()} training done: {args.num_batches} batches in {elapsed:.1f}s ({elapsed/60:.1f} min) | {rate:.2f} batch/s | {samples/elapsed:.0f} samples/s')
         if args.holdout:
             run_holdout()
 
