@@ -1,123 +1,575 @@
-## Goal
+# TwixBot Self-Training Guide (Windows + RTX 5070 Ti)
 
-Deliver a new developer-facing doc, `docs/self-training-instructions.md`, that walks the user through training the TwixBot network themselves from a random init. Primary scenario: **Windows host + single RTX 5070 Ti**. Two appendices cover (A) how to extend the flow to **dual GPUs**, and (B) **CPU tuning** for the user's AMD 7800X3D with an upgrade estimate for a 9950X3D.
+Target hardware: **Windows 11, AMD Ryzen 7 7800X3D, NVIDIA RTX 5070 Ti, 64 GB RAM**.
+Runtime environment: **WSL2 Ubuntu** (required — the Unix socket IPC layer in `smmpp.py` does not work natively on Windows).
 
-No code changes are made by this plan itself — the doc references two tiny device-flag patches to `src/nns.py` and `src/train.py` that the user will apply in a follow-up commit. All runtime commands in the doc are the same ones already used in `TRAINING.md` with `--device cuda` added.
+---
 
-## Constraints confirmed with the user
+## Overview
 
-- **Windows only** — no Linux dual-boot, no repartitioning. ⇒ use WSL2 Ubuntu (Unix sockets in `src/smmpp.py` / `src/nns.py` require a POSIX environment; WSL2 passes the NVIDIA Windows driver through via `/dev/dxg` with no separate Linux driver install).
-- **Single 5070 Ti** — second card may not fit. ⇒ serialise self-play and training on the same GPU; run arena with two NNS servers sharing the GPU at lower `--capacity`.
-- **Random init** — start from `models/v0.pt` produced by a `TwixNet(num_filters=64, num_blocks=8)` + `torch.save` recipe (see `TRAINING.md` lines 37–47).
+Running the full training pipeline produces a `model.onnx` file that you drop into the
+webapp and rebuild. A meaningful first training run (enough to beat the random-init
+baseline by a wide margin) takes **roughly 1–2 weeks of intermittent sessions**, or
+a few days of continuous running.
 
-## Files referenced (read-only)
+The pipeline has three repeating phases:
 
-- `src/nns.py` — socket path `/tmp/twixtbot_nns` wired through line 49; `nneval.NNEvaluater` constructed at line 33 with hard-coded device.
-- `src/nneval.py:32` — `NNEvaluater(model, device='cpu')` — already takes a device arg; nns.py just needs to forward it.
-- `src/train.py` — `Trainer(...)` constructed at line 275; `prepare_batch(..., device=...)` called at line 315; both currently default to `cpu`.
-- `src/model.py` — `TwixNet` is plain PyTorch, works on CUDA unchanged.
-- `src/battle.py`, `src/pmany.py`, `src/asn_player.py` — CPU-only self-play workers; talk to NNS over Unix socket; no code change needed.
-- `tools/export_onnx.py`, `tools/quantize_model.py` — unchanged deployment path.
-- `TRAINING.md` — upstream canonical training doc; the new doc is a platform-specific practical companion, not a replacement.
-- `docs/planned-features.md` — unchanged by this task (this is docs-only, not a feature from the tracker).
+| Phase | What runs | Where |
+|---|---|---|
+| **A — Self-play** | NNS (GPU inference) + pmany/battle (CPU MCTS) | WSL2 terminal pair |
+| **B — Training** | train.py consumes `.bin` files, updates the model | WSL2 (GPU) |
+| **C — Restart** | Kill old NNS, relaunch on new model | WSL2 |
 
-## Target file structure
+---
 
-`docs/self-training-instructions.md`, roughly 400–600 lines, with these sections:
+## Step 1 — WSL2 + CUDA Setup
 
-1. **Overview & prerequisites** — what you'll produce (a trained `model.onnx` for the webapp), who the doc is for (repo maintainer on Windows + 5070 Ti), total time estimate for a meaningful run (~1–2 weeks of intermittent training to reach a model that beats `v0` by a wide margin).
-2. **Step 1 — WSL2 + CUDA setup**
-   - `wsl --install -d Ubuntu-24.04`, `--set-default-version 2`, reboot.
-   - Windows NVIDIA driver ≥ 570 (Blackwell / `sm_120`); **do not** install a Linux driver inside WSL.
-   - Verify with `nvidia-smi` inside Ubuntu.
-   - Move repo into `~/twixtbot-app` (ext4) rather than `/mnt/c/...` — self-play writes hundreds of MB of `.bin` files, NTFS passthrough is slow.
-3. **Step 2 — Python env inside WSL2**
-   - `python3 -m venv .venv && source .venv/bin/activate`
-   - `pip install --index-url https://download.pytorch.org/whl/cu128 torch torchvision` (override the CPU index pinned in `requirements.txt`).
-   - `pip install numpy pytest`
-   - `export PYTHONPATH=$PWD/src`
-   - `python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"`
-   - Run `pytest src/` to confirm baseline passes.
-4. **Step 3 — Patch `--device` support**
-   - `src/nns.py`: add `-d/--device` argparse flag (default `"cpu"` for back-compat); forward to `nneval.NNEvaluater(model, device=args.device)` at line 33.
-   - `src/train.py`: add `--device` argparse flag (default `"cpu"`); forward to `Trainer(model, ..., device=args.device)` at line 275 and `prepare_batch(..., device=args.device)` at line 315.
-   - No other code changes; tests remain CPU by default.
-5. **Step 4 — Create the initial model**
-   - Shell snippet creating `create_model.py` and saving `models/v0.pt` with `num_filters=64, num_blocks=8` (~1.5M params, fits 16GB with room for training activations).
-   - `cp models/v0.pt models/v0_backup.pt`.
-6. **Step 5 — Single-GPU iteration loop (core of the doc)**
-   - **Phase A — self-play**: NNS holds GPU (`--device cuda`, `--capacity 200`), `pmany` spawns CPU-bound MCTS workers using the socket.
-   - **Phase B — stop NNS, then train** on the freed GPU (`--device cuda`, `--batch_size 256`, 500 batches for iter 1 scaling to 2000 later).
-   - **Phase C — restart NNS** on the new model; loop.
-   - Include the weighted-sampling `w=<float>/` subdir convention from `TRAINING.md` lines 214–229 and the cadence table (1k / 5k / 10k games per iter).
-7. **Step 6 — Evaluate model-vs-model**
-   - Two NNS servers sharing the one GPU at `--capacity 100`; arena via `battle.py` with `add_noise=0.0`, `temperature=0.0`, 200–400 games; promote on >55% at n=200.
-8. **Step 7 — Deploy**
-   - `python tools/export_onnx.py --model models/vN.pt --out webapp/public/model.onnx`
-   - `python tools/quantize_model.py`
-   - `cd webapp && npm run build`
-   - Play-test in the browser before committing.
-9. **Verification** — end-to-end smoke test (NNS + 2-game battle + 5-batch train run) before committing to a multi-hour iteration.
+### 1a. Install WSL2
 
-## Appendix A — Dual-GPU variant
+In a Windows PowerShell (Admin):
 
-If the user later adds a second GPU, the changes are local to Steps 5 and 6 only. The loop overlaps self-play and training:
+```powershell
+wsl --set-default-version 2
+wsl --install -d Ubuntu-24.04
+```
 
-- **GPU0** (primary, e.g. 5070 Ti): **NNS for self-play inference**, running continuously. `CUDA_VISIBLE_DEVICES=0 python src/nns.py --device cuda --capacity 400 ...`
-- **GPU1** (secondary): **`train.py` in parallel** with self-play — reads the growing `spdata/` dir, updates model checkpoints. `CUDA_VISIBLE_DEVICES=1 python src/train.py --device cuda ...`
-- NNS does **not** need to be restarted after each training run; instead, training writes a new `models/vN.pt` and the dual-GPU cadence is "every K hours, SIGTERM NNS and relaunch against the latest checkpoint". Keeps GPU0 at near-constant utilisation.
-- For **arena**: run two NNS servers on the same GPU (either one) at `--capacity 200` each — VRAM is not the bottleneck for inference-only at batch 200 on a 1.5M-param model.
-- No code changes beyond the Step 3 `--device` patches. GPU selection is by `CUDA_VISIBLE_DEVICES` env var.
-- Expected wall-clock speedup: **~2× per iteration** vs single-GPU serial loop (training no longer blocks self-play), provided the CPU can keep both GPUs fed (see Appendix B).
+Reboot when prompted.
 
-## Appendix B — CPU tuning: 7800X3D vs 9950X3D
+### 1b. NVIDIA driver
 
-Self-play is CPU-bound: MCTS tree traversal runs in Python (per-thread), and `pmany` orchestrates multiple processes each with multiple threads. The GPU-side NNS only works as fast as the CPU produces batched leaf positions. On a 1.5M-param TwixNet the 5070 Ti easily outpaces the CPU; **CPU cores are the self-play bottleneck**.
+Install Windows NVIDIA driver **≥ 570** (Blackwell / `sm_120`).
+**Do NOT install a separate Linux driver inside WSL** — WSL2 passes the Windows
+driver through via `/dev/dxg` automatically.
+
+Verify inside Ubuntu:
+
+```bash
+nvidia-smi
+```
+
+You should see the 5070 Ti listed with driver version and CUDA version.
+
+### 1c. Move the repo to WSL2 ext4
+
+Self-play writes hundreds of `.bin` files; NTFS passthrough (`/mnt/c/...`) is slow.
+Clone or copy the repo into the WSL2 native filesystem:
+
+```bash
+cp -r /mnt/c/path/to/twixtbot-app ~/twixtbot-app
+cd ~/twixtbot-app
+```
+
+All commands below assume you are in `~/twixtbot-app`.
+
+### 1d. Tune WSL2 resource limits
+
+Create or edit `C:\Users\<you>\.wslconfig`:
+
+```ini
+[wsl2]
+memory=52GB
+swap=0
+pageReporting=false
+```
+
+- `memory=52GB` — leaves ~12 GB for Windows and the GPU driver.
+- `swap=0` — no swap file; avoids silent disk I/O under memory pressure.
+- `pageReporting=false` — prevents WSL from returning pages to Windows mid-session.
+- Do **not** set `processors=` — the 7800X3D has SMT disabled (8 physical cores);
+  WSL2 will use all available cores by default. Verify with `nproc` inside Ubuntu.
+
+Restart WSL to apply: `wsl --shutdown` in PowerShell, then reopen Ubuntu.
+
+---
+
+## Step 2 — Python Environment
+
+```bash
+cd ~/twixtbot-app
+python3 -m venv .venv
+source .venv/bin/activate
+
+# PyTorch CUDA 12.8 build (overrides the CPU-only index in requirements.txt)
+pip install --index-url https://download.pytorch.org/whl/cu128 torch torchvision
+
+pip install numpy pytest
+export PYTHONPATH=$PWD/src
+```
+
+Add the export to `~/.bashrc` so it survives new shells:
+
+```bash
+echo 'export PYTHONPATH=$HOME/twixtbot-app/src' >> ~/.bashrc
+```
+
+Verify CUDA is visible:
+
+```bash
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+# Expected: True  NVIDIA GeForce RTX 5070 Ti
+```
+
+Run the test suite to confirm a clean baseline:
+
+```bash
+pytest src/
+```
+
+---
+
+## Step 3 — Create the Initial Model
+
+Run once to produce a randomly-initialised checkpoint:
+
+```bash
+mkdir -p models spdata
+python create_model.py
+cp models/v0.pt models/v0_backup.pt
+```
+
+`create_model.py` saves a `TwixNet(num_filters=64, num_blocks=8)` model (~1.9 M parameters,
+~7.7 MB on disk, fits comfortably in 16 GB VRAM with room for activations and optimizer state).
+
+---
+
+## Step 4 — Verification Smoke Test
+
+Run this end-to-end check before committing to a multi-hour iteration.
+You need **three terminals** inside WSL2, each with `source .venv/bin/activate`
+and `export PYTHONPATH=$PWD/src`.
+
+**Terminal 1 — start NNS:**
+
+```bash
+python src/nns.py \
+  --location /tmp/twixtbot_nns \
+  --device cuda \
+  --model models/v0.pt \
+  --capacity 64
+```
+
+Wait until the server prints its ready message (no error on startup).
+
+**Terminal 2 — run 2 self-play games:**
+
+```bash
+python src/battle.py \
+  --white "asn_player:location=/tmp/twixtbot_nns,trials=10,async_calls=8" \
+  --black "asn_player:location=/tmp/twixtbot_nns,trials=10,async_calls=8" \
+  --num_games 2 \
+  --threads 1
+```
+
+Expected: prints game results (scores and model names) within ~30 seconds.
+
+**Terminal 2 — run 5 training batches:**
+
+```bash
+python src/train.py \
+  --model models/v0.pt \
+  --device cuda \
+  --num_batches 5 \
+  --batch_size 16
+```
+
+Expected: prints 5 batch-loss lines and saves the model.
+
+**Terminal 1 — kill NNS:**
+
+```bash
+python src/nns.py --location /tmp/twixtbot_nns --kill
+```
+
+If all three steps succeed without errors, you are ready for a full iteration.
+
+---
+
+## Step 5 — Single-GPU Iteration Loop
+
+### Phase A — Self-play
+
+Open two terminals.
+
+**Terminal 1 — GPU inference server:**
+
+```bash
+python src/nns.py \
+  --location /tmp/twixtbot_nns \
+  --device cuda \
+  --model models/v0.pt \
+  --capacity 2048 \
+  --compile \
+  --fp16
+```
+
+Flag notes:
+- `--capacity 2048` — must equal `num_clones × threads × 2 × async_calls`
+  (16 × 2 × 2 × 32 = 2048). Too low causes silent slot-allocation failures that
+  hang worker threads.
+- `--compile` — wraps the model with `torch.compile(mode='reduce-overhead')`,
+  fusing conv+BN+activation kernels. First batch is slow (~30 s compilation);
+  steady-state throughput improves ~20–40%.
+- `--fp16` — runs inference in float16, halving memory-bandwidth demand. On
+  Blackwell fp16 hardware this gives ~1.5–2× inference throughput. Silently
+  ignored if `--device cpu`.
+
+**Terminal 2 — self-play workers:**
+
+```bash
+mkdir -p spdata
+rm -rf logs/sp_gen && python src/pmany.py \
+  --num_clones 16 \
+  --log_dir logs/sp_gen \
+  -- \
+  python src/battle.py \
+    --white "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
+    --black "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
+    --num_games 63 \
+    --threads 2 \
+    --training_file spdata/iter1_%n%.bin
+```
+
+The `--` separator is required; without it, pmany's argparse intercepts the
+`--white`, `--black`, etc. flags meant for battle.py.
+
+Parameter notes:
+- `--num_clones 16` — 16 independent processes. Each runs 2 game threads
+  (via `--threads 2`), totalling 32 concurrent games. The 7800X3D (SMT disabled,
+  8 physical cores) handles this comfortably because MCTS workers spend most of
+  their time blocked on NNS socket replies, not burning CPU.
+- `async_calls=32` — `asn_player` keeps 32 in-flight NNS queries per player,
+  maintaining a large GPU batch. With 32 game threads and 32 async_calls,
+  NNS receives ~320 positions per batch and is GPU-busy ~97% of wall clock.
+- `trials=100` — MCTS playouts per move. 100 is fast and produces reasonable
+  training signal; raise to 200 for later iterations once the model is stronger.
+- `--num_games 63` — games per clone. 16 × 63 ≈ **1 008 games per run** (~60 K
+  training records). Adjust to taste; aim for 5 000–10 000 games in later iterations.
+- `%n%` — replaced by zero-padded clone index (00–15), giving separate output files
+  (`spdata/iter1_00.bin` … `spdata/iter1_15.bin`).
+
+**Monitoring:**
+
+Watch `logs/sp_gen/master.log` for progress:
+
+```bash
+tail -f logs/sp_gen/master.log
+```
+
+Watch NNS terminal for GPU stats (printed every 10 000 evaluations):
+
+```
+gpu: N=30753 T=1068.28 W=9.84018e+06 avg=-0.000322 + 0.000110*W
+```
+
+- Average batch size = W/N ≈ **320** (good; larger is better)
+- GPU busy fraction = T_gpu / (T_gpu + T_wait) ≈ **97%** (NNS is GPU-saturated)
+- The nvidia-smi reading of ~60% reflects memory-bandwidth-limited SM occupancy,
+  not NNS starvation. Adding more CPU workers does not improve throughput once
+  the NNS is GPU-saturated; use `--compile` and `--fp16` instead.
+
+**Expected throughput:** ~4 000–5 000 games/hour at `trials=100` on this hardware.
+
+### Phase B — Training
+
+Kill the NNS to free the GPU, then train:
+
+```bash
+# Terminal 1
+python src/nns.py --location /tmp/twixtbot_nns --kill
+```
+
+```bash
+# Terminal 2 (or same terminal after pmany finishes)
+cp models/v0.pt models/v1.pt
+
+python src/train.py \
+  --model models/v1.pt \
+  --device cuda \
+  --num_batches 1000 \
+  --batch_size 256 \
+  --learning_rate 0.01 \
+  --decay_rate 0.95 \
+  --temperature 0.5 \
+  --policy_epsilon 0.01 \
+  --save_after 200 \
+  spdata/
+```
+
+Flag notes:
+- Copy to `v1.pt` first — `train.py` modifies the model file in-place.
+  `v0.pt` remains as the prior checkpoint for arena comparison.
+- `spdata/` — pass the directory; train.py scans all `.bin` files recursively.
+  See *Weighted sampling* below for multi-iteration data organisation.
+- `--num_batches 1000` — for iteration 1 (~60 K records at batch 256 ≈ 234 batches
+  per epoch, so 1000 batches ≈ 4 epochs). Scale up as the dataset grows.
+- `--decay_rate 0.95` — multiplies the learning rate by 0.95 whenever batch loss
+  increases (soft annealing). Set to 1.0 to disable.
+- `--save_after 200` — writes intermediate checkpoints every 200 batches
+  (`v1.pt.200`, `v1.pt.400`, …). Guards against crashes on long runs.
+- `--temperature 0.5` — must match the temperature used during self-play generation.
+
+Training prints per-batch: `loss=…  slope=…  policy=…  value=…`.
+A downward-trending loss slope confirms learning is happening.
+
+### Phase C — Restart on New Model
+
+```bash
+python src/nns.py \
+  --location /tmp/twixtbot_nns \
+  --device cuda \
+  --model models/v1.pt \
+  --capacity 2048 \
+  --compile \
+  --fp16
+```
+
+Then repeat Phase A with `--training_file spdata/iter2_%n%.bin` and
+`--model models/v1.pt` in the NNS command.
+
+### Iteration Cadence
+
+| Iteration | Games to generate | Training batches | Notes |
+|---|---|---|---|
+| 1 | 1 000 | 500–1 000 | Validate pipeline; model improves quickly from random init |
+| 2–4 | 3 000–5 000 each | 1 000–1 500 | Model starts making recognisable moves |
+| 5+ | 10 000+ each | 2 000+ | Use weighted sampling to down-weight old data |
+
+Save each trained model as a new file (`v1.pt`, `v2.pt`, …) rather than
+overwriting, so you can roll back or run arena comparisons at any point.
+
+### Weighted Sampling of Training Data
+
+Keep data from multiple iterations but down-weight older games:
+
+```
+spdata/
+  w=0.2/          ← older games (20% sampling weight)
+    iter1_*.bin
+    iter2_*.bin
+  w=0.8/          ← recent games (80% sampling weight)
+    iter5_*.bin
+```
+
+```bash
+python src/train.py --model models/v5.pt --device cuda ... spdata/
+```
+
+train.py picks up the `w=<float>/` convention automatically from the directory names.
+
+---
+
+## Step 6 — Evaluate Model vs Model (Arena)
+
+Run arena comparisons to decide whether to promote a newly trained model.
+
+Two NNS servers share the single GPU — one per model under evaluation.
+
+**Terminal 1 — NNS for new model (candidate):**
+
+```bash
+python src/nns.py \
+  --location /tmp/twixtbot_nns_new \
+  --device cuda \
+  --model models/v1.pt \
+  --capacity 512 \
+  --fp16 --compile
+```
+
+**Terminal 2 — NNS for baseline model:**
+
+```bash
+python src/nns.py \
+  --location /tmp/twixtbot_nns_old \
+  --device cuda \
+  --model models/v0.pt \
+  --capacity 512 \
+  --fp16 --compile
+```
+
+`--capacity 512` per server (8 clones × 2 threads × 1 player per server × 32
+async_calls = 512).
+
+**Terminal 3 — arena games:**
+
+```bash
+rm -rf logs/arena && python src/pmany.py \
+  --num_clones 8 \
+  --log_dir logs/arena \
+  -- \
+  python src/battle.py \
+    --white "asn_player:location=/tmp/twixtbot_nns_new,trials=400,async_calls=32" \
+    --black "asn_player:location=/tmp/twixtbot_nns_old,trials=400,async_calls=32" \
+    --num_games 50 \
+    --threads 2
+```
+
+8 clones × 50 games = **400 games total**. battle.py automatically alternates
+colours every game for fairness. The final score shows `--black` (old model) vs
+`--white` (new model); look at the white-side percentage.
+
+**Promotion threshold:**
+- Win-rate > **55%** at n=200 — meaningful improvement (±7% margin at p=0.05).
+- Win-rate > **60%** at n=400 — strong signal; promote without hesitation.
+
+**Kill servers after arena:**
+
+```bash
+python src/nns.py --location /tmp/twixtbot_nns_new --kill
+python src/nns.py --location /tmp/twixtbot_nns_old --kill
+```
+
+---
+
+## Step 7 — Deploy
+
+When the model is good enough to ship:
+
+```bash
+# Export to ONNX (float32, BN folded into conv layers)
+python tools/export_onnx.py --model models/v1.pt --out webapp/public/model.onnx
+
+# INT8 dynamic quantization (in-place; saves fp32 backup as model.fp32.onnx)
+# Reduces model size ~75%, cuts peak WASM heap on iOS — do not skip this step
+python tools/quantize_model.py
+
+# Rebuild the webapp
+cd webapp && npm run build
+```
+
+Play-test in the browser (including on iOS if possible) before committing and pushing.
+
+---
+
+## Appendix A — Dual-GPU Variant
+
+If a second GPU is added later, the only changes are in Steps 5 and 6.
+The loop overlaps self-play and training instead of serialising them:
+
+- **GPU0** (5070 Ti) — NNS for self-play, running continuously:
+  ```bash
+  CUDA_VISIBLE_DEVICES=0 python src/nns.py \
+    --location /tmp/twixtbot_nns \
+    --device cuda --model models/v0.pt \
+    --capacity 2048 --compile --fp16
+  ```
+
+- **GPU1** (secondary) — train.py in parallel with self-play:
+  ```bash
+  CUDA_VISIBLE_DEVICES=1 python src/train.py \
+    --model models/v1.pt --device cuda ...
+  ```
+
+With two GPUs, NNS does **not** need to be stopped between training runs. Instead:
+write a new checkpoint (`v1.pt`, `v2.pt`, …), then SIGTERM NNS and relaunch
+against the latest checkpoint. GPU0 stays at near-constant utilisation.
+
+Arena: run two NNS servers on either GPU at `--capacity 512` each — VRAM is
+not the bottleneck for inference on a 1.9 M-param model.
+
+No code changes beyond the existing `--device` flags. GPU selection is by
+`CUDA_VISIBLE_DEVICES`.
+
+Expected wall-clock speedup: **~2× per iteration** (training no longer blocks
+self-play), provided the CPU keeps GPU0 fed — see Appendix B.
+
+---
+
+## Appendix B — GPU is the Bottleneck: Hardware Analysis
+
+### What the data shows
+
+During a real self-play run, NNS reports cumulative statistics at every 10 000
+evaluations. A representative snapshot:
+
+```
+waiting:     N=30753  T=12.8    avg=0.000417
+preprocessing: N=30753  T=12.3    avg=0.000400
+gpu:         N=30753  T=1068.3  W=9.84e+06  avg=-0.000322 + 0.000110*W
+pp_shmem:    N=30753  T=4.2
+pp_socket:   N=30753  T=0.8
+```
+
+Key derived metrics:
+
+| Metric | Value | Interpretation |
+|---|---|---|
+| Average batch size W/N | **320 positions/batch** | Workers are keeping NNS well-fed |
+| GPU time per batch T/N | **34.7 ms** | Dominated by memory-bandwidth, not compute |
+| GPU busy fraction | **97%** of wall clock | NNS is GPU-saturated, not CPU-starved |
+| nvidia-smi GPU utilisation | **~60%** | SM occupancy is memory-bandwidth limited |
+
+**Critical finding: the GPU, not the CPU, is the bottleneck.**
+
+The NNS spends 97% of its wall-clock time running GPU inference. Adding more CPU
+workers (more clones) does not improve throughput — the NNS can already barely keep
+up with the CPU. The 60% nvidia-smi reading does not indicate starvation; it reflects
+the GPU running at 60% SM occupancy because convolution over a 24×22 spatial grid
+with 64 filters is **memory-bandwidth limited**, not compute-limited, on Blackwell.
+
+The levers that actually improve throughput are on the inference side:
+
+| Lever | Flag | Expected gain | Mechanism |
+|---|---|---|---|
+| Kernel fusion | `--compile` | 20–40% | Eliminates per-layer dispatch overhead via TorchInductor |
+| Half-precision | `--fp16` | 40–90% | Halves memory bandwidth; Blackwell has dedicated fp16 hardware |
+| Larger model | Rebuild with 128 filters | Plateaus sooner | More FLOPs per memory access → better SM occupancy |
 
 ### AMD Ryzen 7 7800X3D (current)
 
-- **8 cores / 16 threads**, all on a single 3D V-cache CCD (uniform L3 latency, ideal for cache-heavy workloads like MCTS tree traversal).
-- **Recommended `pmany` config**: `--num_clones 4 --threads 4` (16 threads total), matching the 16 SMT threads.
-- **NNS `--capacity`**: 200 is ample — leaf positions arrive slower than inference can consume them.
-- **Batch sizes**: 256 for training is comfortable; GPU spends most time waiting anyway.
-- **WSL2 considerations**: ensure WSL2 is allowed to use all cores (`.wslconfig` with `processors=16`); by default it uses all logical processors but worth verifying with `nproc` inside WSL.
-- **Self-play rate ballpark**: ~2,500–3,500 games/hour at `trials=200` on a 5070 Ti + 7800X3D (empirical from comparable TF/PyTorch MCTS setups; actual numbers should be logged in iteration 1).
+- **8 physical cores, SMT disabled.** All cores on a single 3D V-Cache CCD;
+  uniform L3 latency ideal for MCTS tree traversal.
+- **WSL2**: do not set `processors=` in `.wslconfig` — WSL2 sees 8 logical cores
+  automatically (verify with `nproc`). Setting `processors=16` causes a boot error.
+- **Recommended config**: `--num_clones 16 --threads 2 --async_calls 32`
+  (32 concurrent game threads, each player keeping 32 in-flight NNS queries).
+  Total in-flight: 16 × 2 × 2 × 32 = **2048** → `--capacity 2048` on NNS.
+- **Why 16 clones on 8 cores**: MCTS workers are I/O-bound (blocking on NNS
+  replies), not compute-bound. Oversubscribing cores is beneficial — while one
+  thread waits for a NNS reply, another can do tree traversal. 32 game threads on
+  8 cores achieves ~97% NNS GPU utilisation in practice.
+- **Measured throughput**: ~4 000–5 000 games/hour at `trials=100`.
+- **WSL2 tips**:
+  - Ensure **Core Isolation / Memory Integrity (HVCI)** is off in Windows Security
+    → can cost 10–15% CPU throughput under WSL2.
+  - Set Windows power plan to **Best Performance**.
+  - Close Chrome/Edge — background timers degrade 3D V-Cache hit rates.
 
 ### AMD Ryzen 9 9950X3D (upgrade scenario)
 
-- **16 cores / 32 threads**, but 3D V-cache is only on **one CCD (cores 0–7)**; the second CCD (cores 8–15) is vanilla Zen 5 without the extra L3. MCTS benefits heavily from L3, so layout matters.
-- **Recommended `pmany` config**: `--num_clones 8 --threads 4` (32 threads total). Each process is independent and talks only to the NNS over the socket — no inter-process chatter that would suffer from cross-CCD latency.
-- **Optional CCD pinning**: if per-game throughput is more important than aggregate throughput (e.g. during arena evaluation), pin the arena processes to cores 0–7 with `taskset -c 0-7` so they sit on the V-cache CCD. For bulk self-play, let the scheduler spread across both CCDs.
-- **NNS `--capacity`**: raise to 400 — twice as many MCTS workers means twice the batch arrival rate.
-- **Training phase**: unchanged (GPU-bound, not CPU-bound).
+The 9950X3D has **16 cores / 32 threads**, but 3D V-Cache is on **one CCD only
+(cores 0–7)**; the second CCD (cores 8–15) is standard Zen 5 without the extra L3.
 
-### Relative performance estimate (9950X3D vs 7800X3D)
+**Because the GPU is the bottleneck, not the CPU, adding cores gives diminishing returns.**
+The 7800X3D already keeps NNS at 97% GPU utilisation. More CPU only helps at the margin
+by enabling larger async batches and slightly larger instantaneous batch sizes at NNS.
 
-Under the same 5070 Ti:
+**Revised performance estimate vs. 7800X3D under the same 5070 Ti:**
 
-| Phase               | Speedup        | Rationale |
-|---------------------|----------------|-----------|
-| Self-play (Phase A) | **1.5–1.8×**   | 2× core count, but non-V-cache CCD is slower for MCTS; GPU starts to saturate around 24–28 MCTS threads on a 1.5M-param model, limiting scaling below 2×. |
-| Training (Phase B)  | ~1.0×          | GPU-bound; CPU only feeds batches, which is not the bottleneck. |
-| Arena (Step 6)      | 1.3–1.5×       | Two NNS sharing one GPU caps speedup; more cores mostly reduce the idle time between MCTS batches. |
-| **Full iteration wall-clock (single-GPU serial loop)** | **~1.3–1.5×** | Weighted by time share: ~60% self-play + ~30% train + ~10% arena. |
-| **Full iteration wall-clock (dual-GPU, Appendix A)**   | **~1.7–1.9×** | Training is parallel with self-play ⇒ self-play speedup dominates. |
+| Phase | Speedup | Rationale |
+|---|---|---|
+| Self-play (Phase A) | **1.1–1.2×** | GPU is already saturated at 97%; more CPU mainly increases average batch size from 320 → 450, yielding modest SM-occupancy gains. Not a 2× improvement. |
+| Training (Phase B) | **~1.0×** | GPU-bound; CPU only feeds batches and is not the bottleneck. |
+| Arena (Step 6) | **1.1–1.3×** | Two NNS sharing one GPU caps speedup; extra cores reduce inter-batch idle time slightly. |
+| **Full iteration (single-GPU serial)** | **~1.1–1.2×** | Self-play dominates time; GPU saturation limits CPU scaling. |
+| **Full iteration (dual-GPU, Appendix A)** | **~1.5–1.7×** | Training parallelism adds ~2× when GPU-bound training runs concurrently; CPU headroom helps sustain GPU0. |
 
-Bottom line: a 9950X3D is a meaningful upgrade only if the user plans **heavy** training (many iterations, large game counts). For a first end-to-end validation run on the 7800X3D, the existing CPU is adequate; the 5070 Ti is not being starved at `--num_clones 4 --threads 4`.
+**Recommended config on 9950X3D:**
+```
+--num_clones 24 --threads 2 --async_calls 32
+# Total in-flight: 24 × 2 × 2 × 32 = 3072 → --capacity 3072 on NNS
+```
 
-Windows-side tips either CPU:
-- Ensure **Core Isolation / Memory Integrity** (HVCI) is off in Windows Security — it can cost 10–15% CPU under WSL2.
-- Set the Windows power plan to **Best Performance** during training runs.
-- Close Chrome/Edge — each tab's background timer wakes up cores and hurts the 3D V-cache hit rate.
+Optional CCD pinning for arena (not self-play):
+```bash
+taskset -c 0-7 python src/pmany.py ...
+```
 
-## Implementation checklist (after ExitPlanMode approval)
+Pins arena workers to the V-Cache CCD for more consistent per-game MCTS latency.
+For bulk self-play, let the scheduler spread freely — aggregate throughput matters
+more than per-game latency.
 
-1. Create `docs/self-training-instructions.md` with the structure above, populating each step with the commands shown in my earlier plan draft.
-2. Verify the doc renders cleanly on GitHub (no broken relative links; `TRAINING.md` cross-references resolve).
-3. No code, test, or `docs/planned-features.md` changes required.
-
-## Out of scope
-
-- Actually applying the `--device` patches to `src/nns.py` / `src/train.py` — the doc tells the user to do this; doing it is a separate commit.
-- Performing a training run.
-- Automating any of the iteration loop (multi-phase scripts).
+**Bottom line:** A 9950X3D is a meaningful upgrade **only when running dual-GPU**
+(Appendix A) — the extra CPU cores sustain both GPU0 (self-play NNS) and GPU1
+(training) simultaneously without one starving the other. For single-GPU serial
+training, the 7800X3D is adequate; the GPU is the binding constraint and
+`--compile --fp16` on NNS are far more impactful than a CPU upgrade.
