@@ -59,6 +59,7 @@ for i in range(args.num_clones):
     proc = ProcInfo(p, i, f)
     procmap[p.pid] = proc
 
+_failures = 0
 while procmap:
     (pid, status) = os.wait()
     _completed += 1
@@ -67,8 +68,10 @@ while procmap:
     xcode = (status >> 8) & 0xff
     if signum:
         print(when(), "instance %d exited with signal %d" % (proc.id, signum))
+        _failures += 1
     elif xcode:
         print(when(), "instance %d exited with status %d" % (proc.id, xcode))
+        _failures += 1
     else:
         print(when(), "instance %d finished happily" % (proc.id))
     proc.p.wait()
@@ -90,4 +93,8 @@ while procmap:
 
 elapsed_total = time.time() - _start_time
 print(when(), "all instances finished. Total: %.1fs (%.1f min)" % (elapsed_total, elapsed_total / 60))
+if _failures:
+    print(when(), "FAIL: %d of %d instances exited with error" % (_failures, _total))
+    log_f.close()
+    sys.exit(1)
 log_f.close()
