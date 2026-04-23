@@ -1,16 +1,16 @@
 {
   "permissions": {
+    "additionalDirectories": [
+      "///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app"
+    ],
     "allow": [
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c 'import torch; print\\(\\\\\"torch:\\\\\", torch.__version__\\)'\")",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python create_model.py && cp models/v0.pt models/v0_backup.pt && ls -la models/v0*.pt\")",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python src/nns.py --help 2>&1; echo '---'; python src/pmany.py --help 2>&1; echo '---'; python src/train.py --help 2>&1\")",
-      "Bash(wsl -d Ubuntu -- bash -c \"nproc && free -h && cat /proc/meminfo | grep -E 'MemTotal|SwapTotal'\")",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c 'import sys; sys.path.insert\\(0,\\\\\"src\\\\\"\\); import asn_player; print\\(\\\\\"OK\\\\\"\\)'\")",
-      "Bash(wsl -d Ubuntu -- bash -c 'cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c \" *)",
-      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/logs/**)",
-      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/**)",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd /root/workspaces/twixtbot-app && source .venv/bin/activate && python -c 'import sys; sys.path.insert\\(0,\\\\\"src\\\\\"\\); import battle; print\\(\\\\\"OK\\\\\"\\)'\")",
-      "Read(///wsl.localhost/Ubuntu/root/workspaces/twixtbot-app/logs/sp_gen/**)"
-    ]
+      "Read",
+      "Write",
+      "Create",
+      "Delete",
+      "Update",
+      "Bash",
+      "Git"
+     ]
   }
 }
