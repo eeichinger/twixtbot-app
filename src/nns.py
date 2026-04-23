@@ -18,6 +18,7 @@ parser.add_argument("-m", "--model", type=str, required=False)
 parser.add_argument("-k", "--kill", action='store_true')
 parser.add_argument("-c", "--capacity", type=int, default=200)
 parser.add_argument("--milestone_step", type=int, default=10000)
+parser.add_argument("--compile", action='store_true', dest='compile_model')
 args = parser.parse_args()
 
 if args.kill:
@@ -31,7 +32,7 @@ if args.model is None:
 else:
     model = args.model
 
-ne = nneval.NNEvaluater(model, device=args.device)
+ne = nneval.NNEvaluater(model, device=args.device, compiled=args.compile_model)
 
 class NNServer(smmpp.Server):
     def run_jobs(self, jobs):

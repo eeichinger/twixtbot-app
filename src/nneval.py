@@ -29,7 +29,7 @@ class NNEvaluater:
         device (str):  Torch device string, e.g. 'cpu' or 'cuda'.
     """
 
-    def __init__(self, model_or_path, device='cpu'):
+    def __init__(self, model_or_path, device='cpu', compiled=False):
         self.device = device
         if isinstance(model_or_path, str):
             net = torch.load(model_or_path, map_location=device,
@@ -37,6 +37,8 @@ class NNEvaluater:
         else:
             net = model_or_path
         self.model = net.eval().to(device)
+        if compiled:
+            self.model = torch.compile(self.model, mode='reduce-overhead')
 
     def pwin_size(self):
         """Return the number of value outputs — always 3 (Loss/Draw/Win)."""
