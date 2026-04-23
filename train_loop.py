@@ -24,6 +24,7 @@ src/train.py via subprocess; it contains no training logic of its own.
 
 import argparse
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -73,6 +74,16 @@ ITERATION_CADENCE = [
     (99, 10000, 2000),   # iter 5+
 ]
 
+# --- Weighted sampling of self-play data -----------------------------------
+# Organises spdata/ into two weighted tiers so train.py samples recent games
+# more often than old ones (see "Weighted sampling" in self-training-instructions.md).
+# At the start of iteration N, files produced by iterations older than the
+# recency window are physically moved from the RECENT tier to the OLDER tier.
+USE_WEIGHTED_SAMPLING = True
+RECENT_WEIGHT = 0.8                    # sampling weight for recent-tier files
+OLDER_WEIGHT = 0.2                     # sampling weight for older-tier files
+RECENCY_WINDOW = 3                     # iters N-RECENCY_WINDOW+1 .. N count as "recent"
+
 # --- Run control -----------------------------------------------------------
 TOTAL_ITERATIONS = 5                   # how many iterations to run by default
 SELF_PLAY_HEARTBEAT_SEC = 60           # how often to print "still running" during Phase A
@@ -115,6 +126,48 @@ def get_cadence(iteration):
         if iteration <= bound:
             return games, batches
     return ITERATION_CADENCE[-1][1:]
+
+
+_ITER_RE = re.compile(r'iter(\d+)_\d+\.bin$')
+
+
+def rotate_spdata_tiers(iteration, log):
+    """Ensure weighted-tier directory layout and demote aged-out files.
+
+    Before self-play for iteration N writes new files to the RECENT tier,
+    move any files from iterations <= (N - RECENCY_WINDOW) out of RECENT and
+    into OLDER. Returns the directory path where new iteration-N files
+    should be written.
+
+    If USE_WEIGHTED_SAMPLING is False, returns SPDATA_DIR (flat layout).
+    """
+    if not USE_WEIGHTED_SAMPLING:
+        return SPDATA_DIR
+
+    recent_dir = os.path.join(SPDATA_DIR, f"w={RECENT_WEIGHT}")
+    older_dir = os.path.join(SPDATA_DIR, f"w={OLDER_WEIGHT}")
+    os.makedirs(recent_dir, exist_ok=True)
+    os.makedirs(older_dir, exist_ok=True)
+
+    cutoff = iteration - RECENCY_WINDOW  # iterations <= cutoff are "old"
+    if cutoff < 1:
+        return recent_dir
+
+    moved = 0
+    for fname in sorted(os.listdir(recent_dir)):
+        m = _ITER_RE.match(fname)
+        if not m:
+            continue
+        file_iter = int(m.group(1))
+        if file_iter <= cutoff:
+            src = os.path.join(recent_dir, fname)
+            dst = os.path.join(older_dir, fname)
+            shutil.move(src, dst)
+            moved += 1
+    if moved:
+        log(f"spdata rotation: moved {moved} files (iters <= {cutoff}) "
+            f"from w={RECENT_WEIGHT}/ to w={OLDER_WEIGHT}/")
+    return recent_dir
 
 
 # =============================================================================
@@ -188,7 +241,7 @@ def stop_nns(nns_proc, nns_log_f, log):
 # Phase A — self-play
 # =============================================================================
 
-def run_self_play(iteration, games_target, log):
+def run_self_play(iteration, games_target, output_dir, log):
     sp_log_dir = os.path.join(LOGS_DIR, f"sp_iter{iteration}")
     if os.path.isdir(sp_log_dir):
         shutil.rmtree(sp_log_dir)
@@ -209,7 +262,7 @@ def run_self_play(iteration, games_target, log):
         '--black', asn_spec,
         '--num_games', str(games_per_clone),
         '--threads', str(THREADS_PER_CLONE),
-        '--training_file', os.path.join(SPDATA_DIR, f"iter{iteration}_%n%.bin"),
+        '--training_file', os.path.join(output_dir, f"iter{iteration}_%n%.bin"),
     ]
 
     log(f"self-play start: {NUM_CLONES} clones x {games_per_clone} games "
@@ -333,6 +386,11 @@ def main():
         f"trials={TRIALS}, async_calls={ASYNC_CALLS}")
     log(f"NNS: device={NNS_DEVICE}, capacity={NNS_CAPACITY}, "
         f"compile={NNS_USE_COMPILE}, fp16={NNS_USE_FP16}")
+    if USE_WEIGHTED_SAMPLING:
+        log(f"weighted sampling: recent={RECENT_WEIGHT} older={OLDER_WEIGHT} "
+            f"recency_window={RECENCY_WINDOW} iters")
+    else:
+        log("weighted sampling: disabled (flat spdata/ layout)")
 
     model_dir = os.path.dirname(args.starting_model) or '.'
     overall_start = time.time()
@@ -345,11 +403,12 @@ def main():
                 f"batches={batches}, model={current_model} ---")
             iter_start = time.time()
 
+            output_dir = rotate_spdata_tiers(iteration, log)
             nns_log_path = os.path.join(LOGS_DIR, f"nns_iter{iteration}.log")
             nns_proc, nns_log_f = start_nns(current_model, nns_log_path, log)
             try:
                 wait_for_nns_ready(nns_proc, log)
-                sp_dur = run_self_play(iteration, games, log)
+                sp_dur = run_self_play(iteration, games, output_dir, log)
             finally:
                 stop_nns(nns_proc, nns_log_f, log)
 
