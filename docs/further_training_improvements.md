@@ -3,9 +3,10 @@
 Ideas to improve self-play + training throughput beyond the current
 `--compile --fp16` + `async_calls=32` configuration, ranked by effort-to-reward.
 
-**Current baseline** (as of 2026-04-23): ~12,100 evals/sec, ~4,000–5,000 games/hour
-at `trials=100`. NNS is GPU-busy 94% of wall clock; model (1.9M params,
-`num_filters=64`, `num_blocks=8`) is memory-bandwidth limited on the 5070 Ti.
+**Current baseline** (as of 2026-04-24, `--num_clones=24 --async_calls=32`):
+~14,000 evals/sec, batch size ~480, ~5,600–7,000 games/hour at `trials=100`.
+NNS is GPU-busy ~96% of wall clock; model (1.9M params, `num_filters=64`,
+`num_blocks=8`) is memory-bandwidth limited on the 5070 Ti.
 
 ---
 
@@ -101,6 +102,44 @@ and fewer iterations are needed to reach target strength.
 (iter 3–5). Don't switch on iter 1 — validate the whole pipeline with the
 cheap model first.
 
+### 5a. Deeper policy head (B7 in `docs/improvements.md`)
+
+Keep the trunk, replace the tiny 2-channel 1×1 policy bottleneck
+(~80 params) with `3×3 conv (32ch) → 3×3 conv (16ch) → 1×1 → 528`
+(~14K params). With `trials=100`, policy-prior quality dominates MCTS
+exploration, so this head capacity jump has outsized effect.
+
+**Per-batch time:** ~5–10% slower.
+**Data reusability:** accumulated `spdata/*.bin` stays valid
+(architecture-independent).
+**Pairs with:** the recently-added soft MCTS policy targets in `asn_player` —
+the current 80-param head cannot really exploit that signal; a deeper head can.
+
+See `docs/improvements.md` B7 for design rationale.
+
+### 5b. KataGo global pooling bias (B9a in `docs/improvements.md`)
+
+Add `GlobalAvgPool → Linear(Nch → Nch) → broadcast-add` at each residual
+block. Lets every spatial position at every depth see board-global statistics
+(link density, edge control, overall structure) — precisely the signal that
+local 3×3 convs miss, and precisely the signal TwixT's connectivity-based
+scoring depends on.
+
+**Per-batch time:** ~10–15% slower.
+**Parameter count:** +10–30%.
+**Side-effect on GPU utilisation:** *positive* — improves compute/memory
+ratio, helping the current memory-bandwidth-bound regime.
+**Data reusability:** accumulated `spdata/*.bin` stays valid; the new
+architecture can warm-start training on the existing dataset rather than
+regenerating self-play from scratch.
+**Pairs with:** item #5 above — deeper nets + global pooling compound well.
+
+This is the biggest structural lever for TwixT specifically. Requires a
+full retrain from random init, so plan it as a commit-when-ready experiment
+rather than mid-iteration.
+
+See `docs/improvements.md` B9a for design rationale and KataGo references.
+
 ---
 
 ## Big levers (high effort, high reward)
@@ -137,25 +176,16 @@ reduces GPU time, making CPU prep a larger relative share).
 **Where:** refactor `smmpp.py`'s `run_gpu_side()` into a double-buffered loop
 with two work slots. Requires care around shared memory lifetimes.
 
-### 8. Automate the iteration loop
+### 8. Automate the iteration loop — **DONE**
 
-Currently you manually kill NNS, copy models, run train.py, restart NNS.
-A single script could run unattended overnight:
+Implemented in `train_loop.py` (repo root). Orchestrates Phase A (NNS +
+pmany self-play) and Phase B (train.py) unattended, with weighted-tier
+`spdata/` rotation, heartbeat logging, and resume support via
+`--start_iter`. All tunables are constants at the top of the file.
 
-```bash
-# Pseudocode
-for iter in {1..10}:
-  run_selfplay  # pmany, blocks until num_games done
-  kill_nns
-  cp models/v$((iter-1)).pt models/v$iter.pt
-  run_training  # train.py
-  restart_nns models/v$iter.pt
-  run_arena v$iter vs v$((iter-1))
-  if win_rate < 55%: promote previous model
-```
-
-Not a performance win per se but **eliminates human-in-the-loop latency**,
-which is often 12–24 hours per iteration in practice.
+Still open: automatic arena-gated promotion (run arena at the end of each
+iteration; only accept the new model if it beats the prior by >55% at
+n=200). Currently the loop accepts every trained model unconditionally.
 
 ---
 
@@ -190,12 +220,15 @@ headroom.
 
 ## Recommended sequence
 
-1. **Next run** — try #1 (more clones) + #2 (channels-last) together.
-   Validate throughput uplift to 14k+ evals/sec.
-2. **After iter 1 succeeds** — do #3 (training fp16/compile) to shorten
-   Phase B before iter 2.
-3. **Iter 3+** — add #4 (position cache). Big throughput win with
-   minimal complexity.
-4. **When iter 5 plateaus** — #5 (bigger model) for stronger targets.
-5. **Only if willing to invest a weekend** — #6 (TensorRT). Skip unless the
-   above plateau and you need another step-change.
+1. **Next run** — try #2 (channels-last) on the current running config.
+   Throughput is already at 14k/sec from #1 (24 clones). Free upside if it
+   lands, revert if not.
+2. **Before iter 4** — do #3 (training fp16/compile) to shorten Phase B.
+3. **Iter 5+ in parallel** — branch a #5a lineage (deeper policy head,
+   warm-starts from existing `spdata/`). Compare in arena every 3 iters.
+4. **When current lineage plateaus** — switch to #5 (larger model) and/or
+   commit to a #5b (KataGo global pooling) retrain. Both pair well together.
+5. **Any time** — add #4 (position cache). Big throughput win with minimal
+   complexity, doesn't depend on any of the above.
+6. **Only if willing to invest a weekend** — #6 (TensorRT). Skip unless
+   everything above plateaus and you need another step-change.
