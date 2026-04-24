@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+NOTE: REQUIRES PYTHON <= 3.12 b/c of TF1
+
 Convert a TwixBot TensorFlow 1 checkpoint to a PyTorch TwixNet .pt file.
 
 The "six-917000" checkpoint was trained with:
