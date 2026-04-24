@@ -206,6 +206,11 @@ class Player:
             else:
                 assert gc_index >= 0
                 r = self._go_to_child(subnode, gc_index)
+                if r == 0:
+                    # inner call resolved to "wait" at a deeper level and
+                    # undid its own Ns — propagate the undo up, otherwise
+                    # our Ns increment here has no matching Nf.
+                    parent.Ns[child_index] -= 1
         else:
             parent.subnodes[child_index] = self._expand_leaf(parent, child_index)
             r = 1
