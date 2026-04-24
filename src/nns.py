@@ -6,6 +6,9 @@ multiprocessing.set_start_method('fork', force=True)
 import argparse
 import numpy
 import sys
+import os
+import torch
+torch.set_num_threads(os.cpu_count())  # or a specific core count
 
 # mine
 import naf
@@ -34,6 +37,7 @@ if args.model is None:
         print("Model is:", model)
 else:
     model = args.model
+
 
 ne = nneval.NNEvaluater(model, device=args.device, compiled=args.compile_model, fp16=args.fp16)
 
