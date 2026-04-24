@@ -42,18 +42,18 @@ NNS_SOCKET = "/tmp/twixtbot_nns"       # unix socket path used by NNS/workers
 SPDATA_DIR = "spdata"                  # where .bin training files accumulate
 LOGS_DIR = "logs"                      # all logs (main + per-phase) go here
 
-# --- NNS (inference server) ------------------------------------------------
-NNS_DEVICE = "cuda"
-NNS_CAPACITY = 2048                    # = NUM_CLONES * THREADS_PER_CLONE * 2 * ASYNC_CALLS
-NNS_USE_COMPILE = True                 # --compile flag on src/nns.py
-NNS_USE_FP16 = True                    # --fp16 flag on src/nns.py
-NNS_READY_TIMEOUT_SEC = 60             # how long to wait for socket after spawn
-
 # --- Self-play (Phase A) ---------------------------------------------------
-NUM_CLONES = 16                        # pmany --num_clones
+NUM_CLONES = 24                        # pmany --num_clones
 THREADS_PER_CLONE = 2                  # battle.py --threads
 ASYNC_CALLS = 32                       # asn_player async_calls=
 TRIALS = 100                           # asn_player trials= (MCTS playouts/move)
+
+# --- NNS (inference server) ------------------------------------------------
+NNS_DEVICE = "cuda"
+NNS_CAPACITY = NUM_CLONES * THREADS_PER_CLONE * 2 * ASYNC_CALLS   # = NUM_CLONES * THREADS_PER_CLONE * 2 * ASYNC_CALLS
+NNS_USE_COMPILE = True                 # --compile flag on src/nns.py
+NNS_USE_FP16 = True                    # --fp16 flag on src/nns.py
+NNS_READY_TIMEOUT_SEC = 60             # how long to wait for socket after spawn
 
 # --- Training (Phase B) ----------------------------------------------------
 TRAIN_DEVICE = "cuda"
