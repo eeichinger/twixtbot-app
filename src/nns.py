@@ -1,6 +1,8 @@
 #! /usr/bin/env python
 """ Neural Net Server """
 # python
+import multiprocessing
+multiprocessing.set_start_method('fork', force=True)
 import argparse
 import numpy
 import sys
