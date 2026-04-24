@@ -1,7 +1,9 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 numpy
 torch
-tensorflow-cpu
+tensorflow-cpu; sys_platform == "linux"
+tensorflow; sys_platform == "darwin"
 onnxruntime
 onnx
 onnxscript
+pytest

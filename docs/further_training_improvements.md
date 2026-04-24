@@ -134,6 +134,49 @@ rather than mid-iteration.
 
 See `docs/improvements.md` B9a for design rationale and KataGo references.
 
+### 5c. Progressive network scaling
+
+Start training with a small/fast architecture, grow it as training matures.
+Validated precedent: KataGo famously used progressive network scaling for
+exactly this reason.
+
+**Why it works:**
+- Small net → **faster inference** in NNS → more self-play games per hour →
+  more data per wall-clock hour.
+- Early self-play is low quality anyway; a 20-block monster learning from
+  beginner-grade games is a waste of compute.
+- As games get stronger, a bigger net extracts more signal from them.
+
+**The elegant part for this codebase:** `spdata/*.bin` files store
+`(position, MCTS visit counts, outcome)` — **architecture-agnostic triples**.
+So the workflow is:
+1. Run many cheap iterations with a small net (e.g. 6×32 or 8×40) until
+   loss plateaus.
+2. Spin up a bigger architecture (e.g. 16×64).
+3. Train it from scratch on the accumulated `spdata/`, no weight conversion
+   needed.
+4. Continue self-play + training with the bigger net.
+
+**Two upgrade strategies when switching:**
+- **Cold restart** (simpler): bigger net initialised randomly, trained on
+  all accumulated spdata. More training compute, but clean.
+- **Net2Net / distillation** (more involved): initialise the bigger net to
+  functionally clone the smaller one, then continue training. Faster to
+  reach parity, more code to write.
+
+**Practical recommendation (5070 Ti, 1–2h per iteration):** start with
+~6 blocks × 32 filters. Iterate until improvement stalls (~5–10 iterations).
+Then jump to 12×64, cold-train on accumulated spdata, resume the loop.
+
+**Caveat:** the very earliest iterations produce weak targets that partly
+go to waste — don't over-spend on them. Also: the MCTS visit-count targets
+depend on the network's policy/value outputs, so a stronger network's MCTS
+targets would be sharper. Early spdata is usable but noisier.
+
+**Relation to #5:** item #5 is a single one-time switch to a larger model
+once the pipeline is validated. 5c generalises that into a staged schedule
+with multiple size bumps across the training run.
+
 ---
 
 ## Big levers (high effort, high reward)

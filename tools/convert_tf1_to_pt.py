@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+NOTE: REQUIRES PYTHON <= 3.12 b/c of TF1
+
 Convert a TwixBot TensorFlow 1 checkpoint to a PyTorch TwixNet .pt file.
 
 The "six-917000" checkpoint was trained with:
@@ -24,6 +26,7 @@ import sys
 
 import numpy as np
 import torch
+import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import model as mdl
@@ -46,6 +49,30 @@ def load_tf_checkpoint(path):
     import tensorflow as tf   # only needed here; not required at inference time
     reader = tf.train.load_checkpoint(path)
     var_map = reader.get_variable_to_shape_map()
+    shapes = reader.get_variable_to_shape_map()
+
+    # num_filters: output channels of any primary conv
+    num_filters = shapes['primary_pegs/Variable'][3]
+
+    # num_blocks: count residual blocks (named block0, block1, ...)
+    block_re = re.compile(r'^block(\d+)/Variable$')
+    block_indices = [int(m.group(1)) for k in shapes if (m := block_re.match(k))]
+    num_blocks = max(block_indices) + 1   # or just len(block_indices)
+
+    # value head reductions: pwin/Variable_N — count the 4D (conv) ones only
+    pwin_re = re.compile(r'^pwin/Variable(?:_(\d+))?$')
+    pwin_convs = sum(1 for k, s in shapes.items()
+                     if pwin_re.match(k) and len(s) == 4)
+    value_reductions = pwin_convs
+
+    # num_pwin_hidden: shape of the first FC weight in the value head (2D)
+    fc_key = f'pwin/Variable_{value_reductions}'   # first 2D one after the convs
+    num_pwin_hidden = shapes[fc_key][1]
+
+    print(f'num_filters       = {num_filters}')
+    print(f'num_blocks        = {num_blocks}')
+    print(f'value_reductions  = {value_reductions}')
+    print(f'num_pwin_hidden   = {num_pwin_hidden}')
     return {name: reader.get_tensor(name) for name in var_map}
 
 
