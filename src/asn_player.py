@@ -44,7 +44,13 @@ class Player:
         self.async_calls = int(kwargs.pop('async_calls', 8))
         self.quiet = int(kwargs.pop('quiet', 0))
         self.use_swap = int(kwargs.pop('use_swap', 1))
+        self.add_noise = float(kwargs.pop('add_noise', 0.0))
+        self.temperature = float(kwargs.pop('temperature', 0.0))
+        self.random_rotation = int(kwargs.pop('random_rotation', 1))
         kwargs.pop('resources')
+
+        if self.temperature not in (0.0, 0.5, 1.0):
+            raise ValueError("Unsupported temperature: %s" % self.temperature)
 
         if kwargs:
             raise TypeError("unprocessed options", kwargs)
@@ -120,7 +126,7 @@ class Player:
         leaf.LMnz = leaf.LM.nonzero()
 
         nips = naf.NetInputs(self.game)
-        rot = random.randint(0, 3)
+        rot = random.randint(0, 3) if self.random_rotation else 0
         nips.rotate(rot)
         outbytes = nips.to_expanded_bytes()
 
@@ -141,6 +147,14 @@ class Player:
             el = numpy.exp(movelogits - maxlogit)
             divisor = el[leaf.LMnz].sum()
             leaf.P = el / divisor
+
+            # Dirichlet root-noise for self-play exploration, applied per leaf
+            # to match nnmcts.NeuralMCTS.expand_leaf behavior.
+            if self.add_noise:
+                leaf.P[leaf.LMnz] *= (1.0 - self.add_noise)
+                leaf.P[leaf.LMnz] += self.add_noise * numpy.random.dirichlet(
+                    0.03 * numpy.ones(len(leaf.LMnz[0])))
+
             self.finished_leaves.append(leaf)
             assert self.leaves_waiting > 0
             self.leaves_waiting -= 1
@@ -357,12 +371,23 @@ class Player:
                 return "resign"
 
         assert numpy.array_equal(self.root.Nf, self.root.Ns), (self.root.Nf.sum(), self.root.Ns.sum())
-        good_moves = numpy.where(self.root.Nf == self.root.Nf.max())
-        index = random.choice(good_moves[0])
+        N = self.root.Nf
+
+        # Move selection with configurable temperature (matching nnmplayer).
+        if self.temperature == 0.0:
+            weights = numpy.where(N == N.max(), 1.0, 0.0)
+        elif self.temperature == 0.5:
+            weights = N.astype(numpy.float64) ** 2
+        elif self.temperature == 1.0:
+            weights = N.astype(numpy.float64)
+
+        index = numpy.random.choice(numpy.arange(len(weights)), p=weights / weights.sum())
         move = naf.policy_index_point(game, index)
 
         self.report = "%6.3f %s" % (self.root.Q[index], self._principal_var_str())
-        return move
+        # Return the soft MCTS visit-count distribution alongside the move so
+        # battle.py can use it as a policy training target instead of a one-hot.
+        return move, N
         
 
 if __name__ == "__main__":

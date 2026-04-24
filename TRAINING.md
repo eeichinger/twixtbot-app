@@ -194,8 +194,8 @@ rm -rf logs/sp_gen && python src/pmany.py \
   --log_dir logs/sp_gen \
   -- \
   python src/battle.py \
-    --white "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
-    --black "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
+    --white "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32,add_noise=0.25,temperature=0.5" \
+    --black "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32,add_noise=0.25,temperature=0.5" \
     --num_games 63 \
     --threads 2 \
     --training_file spdata/iter1_%n%.bin
@@ -215,6 +215,11 @@ Key parameters:
 - `async_calls=32` — concurrent NN queries per player. With 32 clients × 32 in
   flight, the NNS receives ~320-position batches and stays GPU-busy ~97% of
   the time. See Appendix B for why going higher hurts throughput.
+- `add_noise=0.25` — Dirichlet exploration noise at each expanded leaf's
+  policy. Essential for self-play data diversity; set to `0` for evaluation.
+- `temperature=0.5` — Move selection: sample proportional to visit-count² (soft
+  but biased toward the best move). `1.0` = linear sample, `0.0` = greedy
+  argmax. Must match `train.py --temperature`.
 
 Aim for at least **10 000–50 000 games** (several hundred MB of `.bin` files)
 before training, split across a few iterations.
@@ -484,9 +489,10 @@ If all three steps succeed without errors, the pipeline is healthy.
 |---|---|---|---|
 | `trials` | `nnmplayer`, `asn_player` | 100 | MCTS playouts/move. 100 for self-play iter 1–3, 200+ later, 400+ for evaluation |
 | `async_calls` | `asn_player` | 8 | Concurrent NN queries per player. 32 is the sweet spot on 8 cores |
-| `add_noise` | `nnmplayer` | 0.0 | Dirichlet root noise. 0.25 for self-play, 0.0 for evaluation |
-| `temperature` | `nnmplayer` | 0.0 | Move selection. 0.5 for self-play, 0.0 for evaluation |
+| `add_noise` | `nnmplayer`, `asn_player` | 0.0 | Dirichlet root noise. 0.25 for self-play, 0.0 for evaluation |
+| `temperature` | `nnmplayer`, `asn_player` | 0.0 | Move selection. 0.5 for self-play, 0.0 for evaluation |
 | `use_swap` | `nnmplayer` (0), `asn_player` (1) | — | Consult swap-rule model for move 1 |
+| `random_rotation` | `nnmplayer`, `asn_player` | 1 | Random 0–3 rotation of NN input per leaf. Leave on |
 | `--device` | `nns.py`, `train.py` | `cpu` | `cuda` for GPU |
 | `--compile` | `nns.py` | off | `torch.compile` kernel fusion |
 | `--fp16` | `nns.py` | off | float16 autocast inference |

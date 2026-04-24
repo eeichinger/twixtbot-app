@@ -47,6 +47,7 @@ NUM_CLONES = 24                        # pmany --num_clones
 THREADS_PER_CLONE = 2                  # battle.py --threads
 ASYNC_CALLS = 32                       # asn_player async_calls=
 TRIALS = 100                           # asn_player trials= (MCTS playouts/move)
+ADD_NOISE = 0.25                       # asn_player add_noise= (Dirichlet root noise; 0 disables)
 
 # --- NNS (inference server) ------------------------------------------------
 NNS_DEVICE = "cuda"
@@ -278,7 +279,8 @@ def run_self_play(iteration, games_target, output_dir, log):
     total_planned = games_per_clone * NUM_CLONES
 
     asn_spec = (f"asn_player:location={NNS_SOCKET},"
-                f"trials={TRIALS},async_calls={ASYNC_CALLS}")
+                f"trials={TRIALS},async_calls={ASYNC_CALLS},"
+                f"add_noise={ADD_NOISE},temperature={TEMPERATURE}")
 
     cmd = [
         sys.executable, 'src/pmany.py',
@@ -411,7 +413,8 @@ def main():
     log(f"iterations: {args.start_iter}..{args.total_iters}")
     log(f"cadence: {ITERATION_CADENCE}")
     log(f"self-play: {NUM_CLONES} clones x {THREADS_PER_CLONE} threads, "
-        f"trials={TRIALS}, async_calls={ASYNC_CALLS}")
+        f"trials={TRIALS}, async_calls={ASYNC_CALLS}, "
+        f"add_noise={ADD_NOISE}, temperature={TEMPERATURE}")
     log(f"NNS: device={NNS_DEVICE}, capacity={NNS_CAPACITY}, "
         f"compile={NNS_USE_COMPILE}, fp16={NNS_USE_FP16}")
     if USE_WEIGHTED_SAMPLING:
