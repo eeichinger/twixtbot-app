@@ -85,7 +85,7 @@ class NNEvaluater:
 
         with torch.no_grad():
             if self.fp16:
-                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                with torch.autocast(device_type=self.device, dtype=torch.float16):
                     policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
             else:
                 policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
