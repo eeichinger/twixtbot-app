@@ -220,6 +220,10 @@ Key parameters:
 - `temperature=0.5` — Move selection: sample proportional to visit-count² (soft
   but biased toward the best move). `1.0` = linear sample, `0.0` = greedy
   argmax. Must match `train.py --temperature`.
+- `position_cache=1` — Enable per-worker transposition cache (Zobrist hash →
+  cached policy/value). Skips NN queries for previously-seen board states.
+  10–20% hit rate at `trials=100`, higher at `trials=200+`. Set to `0` or
+  omit to disable. `train_loop.py` controls this via `POSITION_CACHE`.
 
 Aim for at least **10 000–50 000 games** (several hundred MB of `.bin` files)
 before training, split across a few iterations.

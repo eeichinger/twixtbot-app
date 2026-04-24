@@ -1,7 +1,8 @@
-#! /usr/bin/env python 
+#! /usr/bin/env python
 import importlib
 import numpy
 import operator
+import random as _stdlib_random
 import re
 from collections import namedtuple
 
@@ -103,6 +104,19 @@ class SelectSet:
     def pick(self, rng):
         return rng.choice(self.item_by_index)
 
+# --- Zobrist hashing (incremental board hash for transposition tables) ------
+# Fixed-seed PRNG ensures all processes produce identical tables.
+def _init_zobrist(size=24):
+    rng = _stdlib_random.Random(0x5477_4978_5421)  # "TwixT!" in hex-ish
+    table = [[[rng.getrandbits(64) for _ in range(size)]
+              for _ in range(size)]
+             for _ in range(2)]   # table[color][x][y]
+    turn_key = rng.getrandbits(64)
+    return table, turn_key
+
+_ZOBRIST_TABLE, _ZOBRIST_TURN = _init_zobrist()
+
+
 class Game:
     SIZE = 24
     LINK_LONGY = 4
@@ -117,6 +131,7 @@ class Game:
         self.pegs = [numpy.zeros((Game.SIZE, Game.SIZE), numpy.int8) for _ in range(2)]
         self.links = [numpy.zeros((Game.SIZE, Game.SIZE), numpy.int8) for _ in range(8)]
         self.turn = Game.WHITE
+        self.zhash = 0   # Zobrist hash — empty board, WHITE to move
         self.open_pegs = [SelectSet(), SelectSet()]
         self.reachable = [set(), set()]
         self.reachable_history = []
@@ -136,6 +151,7 @@ class Game:
         copy.pegs = numpy.array(self.pegs)
         copy.links = numpy.array(self.links)
         copy.turn = self.turn
+        copy.zhash = self.zhash
         copy.open_pegs = [x.clone() for x in self.open_pegs]
         copy.reachable = [set(x) for x in self.reachable]
         copy.reachable_history = list(self.reachable_history)
@@ -246,6 +262,9 @@ class Game:
         b = Point(a.y, a.x)
         self.pegs[Game.WHITE][a] = 0
         self.pegs[Game.BLACK][b] = 1
+        self.zhash ^= _ZOBRIST_TABLE[Game.WHITE][a.x][a.y]   # remove White peg
+        self.zhash ^= _ZOBRIST_TABLE[Game.BLACK][b.x][b.y]   # add Black peg
+        self.zhash ^= _ZOBRIST_TURN                           # BLACK → WHITE
         self.history.append('swap')
         self.turn = Game.WHITE
 
@@ -262,6 +281,9 @@ class Game:
         b = Point(a.y, a.x)
         self.pegs[Game.WHITE][a] = 1
         self.pegs[Game.BLACK][b] = 0
+        self.zhash ^= _ZOBRIST_TURN                           # WHITE → BLACK
+        self.zhash ^= _ZOBRIST_TABLE[Game.BLACK][b.x][b.y]   # remove Black peg
+        self.zhash ^= _ZOBRIST_TABLE[Game.WHITE][a.x][a.y]   # restore White peg
         self.history.pop()
         self.turn = Game.BLACK
 
@@ -299,6 +321,8 @@ class Game:
             self.set_link(move, pt, self.turn, 1)
 
         self.pegs[self.turn][move] = 1
+        self.zhash ^= _ZOBRIST_TABLE[self.turn][move.x][move.y]
+        self.zhash ^= _ZOBRIST_TURN
         self.history.append(move)
         self.reachable_history.append(self._update_add_reachable(move))
         self.turn = 1-self.turn
@@ -490,6 +514,8 @@ class Game:
 
         assert self.pegs[uturn][umove] == 1
         self.pegs[uturn][umove] = 0
+        self.zhash ^= _ZOBRIST_TURN
+        self.zhash ^= _ZOBRIST_TABLE[uturn][umove.x][umove.y]
 
         for dlink in Game.DLINKS:
             lend = umove + dlink

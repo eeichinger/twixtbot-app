@@ -36,6 +36,9 @@ class Player:
         self.root = None
         self.history_at_root = None
         self.leaves_waiting = 0
+        self.pos_cache = {}        # zhash -> (score, P array)
+        self.cache_hits = 0
+        self.cache_misses = 0
 
 
     def _init_params(self, kwargs):
@@ -47,6 +50,7 @@ class Player:
         self.add_noise = float(kwargs.pop('add_noise', 0.0))
         self.temperature = float(kwargs.pop('temperature', 0.0))
         self.random_rotation = int(kwargs.pop('random_rotation', 1))
+        self.position_cache_enabled = int(kwargs.pop('position_cache', 0))
         kwargs.pop('resources')
 
         if self.temperature not in (0.0, 0.5, 1.0):
@@ -125,10 +129,30 @@ class Player:
         assert leaf.LM.any()
         leaf.LMnz = leaf.LM.nonzero()
 
+        # --- Position cache lookup (keyed on pre-rotation board state) ---
+        zhash = self.game.zhash
+        if self.position_cache_enabled:
+            cached = self.pos_cache.get(zhash)
+            if cached is not None:
+                self.cache_hits += 1
+                leaf.score, cached_P = cached
+                leaf.P = cached_P.copy()
+                if self.add_noise:
+                    leaf.P[leaf.LMnz] *= (1.0 - self.add_noise)
+                    leaf.P[leaf.LMnz] += self.add_noise * numpy.random.dirichlet(
+                        0.03 * numpy.ones(len(leaf.LMnz[0])))
+                self.finished_leaves.append(leaf)
+                self.num_evals += 1
+                return leaf
+            self.cache_misses += 1
+
         nips = naf.NetInputs(self.game)
         rot = random.randint(0, 3) if self.random_rotation else 0
         nips.rotate(rot)
         outbytes = nips.to_expanded_bytes()
+
+        cache_ref = self.pos_cache if self.position_cache_enabled else None
+        cache_key = zhash
 
         def set_reply(reply):
             p0 = numpy.frombuffer(reply, dtype=numpy.float32)
@@ -147,6 +171,10 @@ class Player:
             el = numpy.exp(movelogits - maxlogit)
             divisor = el[leaf.LMnz].sum()
             leaf.P = el / divisor
+
+            # Store in cache before applying noise (noise is per-expansion)
+            if cache_ref is not None:
+                cache_ref[cache_key] = (leaf.score, leaf.P.copy())
 
             # Dirichlet root-noise for self-play exploration, applied per leaf
             # to match nnmcts.NeuralMCTS.expand_leaf behavior.
@@ -384,7 +412,13 @@ class Player:
         index = numpy.random.choice(numpy.arange(len(weights)), p=weights / weights.sum())
         move = naf.policy_index_point(game, index)
 
-        self.report = "%6.3f %s" % (self.root.Q[index], self._principal_var_str())
+        cache_str = ""
+        if self.position_cache_enabled:
+            total = self.cache_hits + self.cache_misses
+            rate = self.cache_hits / total * 100 if total else 0
+            cache_str = ":cache=%d/%d(%.0f%%)" % (self.cache_hits, total, rate)
+        self.report = "%6.3f %s%s" % (self.root.Q[index],
+                                       self._principal_var_str(), cache_str)
         # Return the soft MCTS visit-count distribution alongside the move so
         # battle.py can use it as a policy training target instead of a one-hot.
         return move, N

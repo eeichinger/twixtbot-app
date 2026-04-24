@@ -52,55 +52,34 @@ without compile. Adding both should cut training wall clock by 30–50%.
 
 Caveat: use `GradScaler` if you see NaN losses; small models often train fine without it.
 
-### 4. Position caching (transposition table)
+### 4. Position caching (transposition table) — **DONE**
 
-MCTS tree expansion calls the NN on many positions that are reachable via
-different move orders. A hash table keyed on board state → cached
-`(policy, value)` skips the NN entirely for repeats.
+Per-worker Python dict keyed on `game.zhash` (Zobrist hash), checked in
+`_expand_leaf()` before sending to NNS. On hit, the cached `(score, P)`
+is used directly (Dirichlet noise re-applied fresh). On miss, the result
+is cached in the `set_reply` callback before noise is applied.
 
-**Where:** `src/asn_player.py`, in `_expand_leaf()`. Before calling
-`self.client.write_query`, compute a hash of `self.game` board state and
-check a local LRU cache. On hit, populate `leaf.score` and `leaf.P`
-directly (re-apply Dirichlet noise fresh) and append to `finished_leaves`
-without any NNS round-trip. On miss, cache the un-rotated result in the
-`set_reply` callback.
+Enabled via `position_cache=1` in the asn_player spec string. Controlled
+by `POSITION_CACHE = True` in `train_loop.py`. Cache hit rate is reported
+per move in worker logs (e.g. `:cache=1520/8400(18%)`).
 
-**Why worker-level, not NNS-level:** `asn_player` applies random rotation
-(`random_rotation=1`) before sending queries. The same board position
-produces different byte patterns at different rotations, so an NNS-level
-byte-hash cache would miss. The cache must be keyed on the pre-rotation
-game state.
+**Implementation details:**
+- `twixt.Game.zhash`: incremental Zobrist hash, XOR-updated in `play()`,
+  `undo()`, `play_swap()`, `undo_swap()`. Fixed-seed PRNG table ensures
+  all processes produce identical hashes. Pegs-only (links are determined
+  by pegs). Turn encoded via `_ZOBRIST_TURN` toggle.
+- `asn_player.Player.pos_cache`: plain `dict` (unbounded). Memory grows
+  with unique positions seen; at ~2.1 KB/entry and ~40K unique positions
+  per game, expect ~80–100 MB per worker process after 1 game, growing
+  slowly thereafter (cross-game hits reduce new entries).
+- Cache is per-worker, not shared across workers. Cross-worker hit rate
+  is low (different openings + noise), and per-worker avoids all IPC.
 
-**Board hash:** `twixt.Game` has no hash function today. Options:
-- **Zobrist hashing** (incremental, O(1) per play/undo): pre-generate a
-  random 64-bit table indexed by `(color, row, col)` for pegs. XOR on
-  play, XOR again on undo. Fast and standard.
-- **Symmetry-aware Zobrist**: compute hashes for both the original and
-  the mirrored board, take the lexicographic minimum. Doubles the hit
-  rate for symmetric positions at negligible cost.
-
-**Cache entry size:** `score` (4 B) + `P` array (528 × 4 = 2,112 B) +
-hash key (8 B) + LRU overhead (~40 B) ≈ **2,164 bytes/entry**.
-
-**Memory budget:** 50 GB system RAM, 24 worker processes, NNS + OS ≈ 8 GB.
-Leaves ~42 GB for workers → ~1.7 GB per process → **~800K entries/process**.
-Conservative target: **500K entries** (~1.1 GB per process, ~26 GB total).
-Can tune down to 200K (~430 MB each, ~10 GB total) if memory is tighter.
-
-**Expected benefit on TwixT:** TwixT has no captures, so any permutation
-of independent moves reaches the same position — transpositions are
-structurally common. Estimated hit rates:
-- `trials=50–100` (shallow search): 10–20% cache hits
-- `trials=200+` (deeper search): 25–40% cache hits
-
-Since the GPU is the bottleneck (96.5% busy), every cached eval translates
-directly to faster game completion: 15% fewer evals → games finish ~15%
-faster → ~18% more games/hour (GPU fills freed capacity automatically).
-
-**Interaction with other items:** composes with everything (channels-last,
-TensorRT, trials scaling). Benefit grows at higher trials, so pairing
-with #9 (per-iteration trials scaling) is natural — the cache matters
-most at the higher-trials later iterations where data quality counts.
+**Future improvements:**
+- Symmetry-aware Zobrist: hash both original and mirrored board, take
+  the minimum. Doubles hit rate for symmetric positions.
+- LRU eviction: cap cache at N entries if memory becomes tight.
+  Currently unbounded because 50 GB system RAM provides ample headroom.
 
 ### 5. Larger model, once iter 2–3 is stable
 
@@ -216,25 +195,9 @@ Still open: automatic arena-gated promotion (run arena at the end of each
 iteration; only accept the new model if it beats the prior by >55% at
 n=200). Currently the loop accepts every trained model unconditionally.
 
-### 9. Per-iteration MCTS trials scaling
+### 9. Per-iteration MCTS trials scaling — **DONE**
 
-Use fewer MCTS trials at early iterations (when the model is weak) and
-ramp up at later iterations (when policy quality makes deeper search
-productive).
-
-**Rationale:** at iter 1–2 the policy head is near-random. Running 100
-trials explores ~100 leaves out of ~500 legal moves — the search is too
-shallow for the extra trials to find tactics the policy missed. At
-`trials=50`, each move's MCTS is ~50% faster. Since GPU is the
-bottleneck, this directly halves self-play Phase A wall time for early
-iterations.
-
-At iter 5+ the policy is strong enough that deeper search (200+ trials)
-finds tactical lines the policy ranks incorrectly, producing better
-training targets. The cost per game doubles, but each game's training
-signal is worth more.
-
-**Implementation:** add `TRIALS_CADENCE` to `train_loop.py`:
+Implemented in `train_loop.py` as `TRIALS_CADENCE`:
 ```python
 TRIALS_CADENCE = [
     (2,  50),    # iter 1-2: weak model, fast games
@@ -242,14 +205,9 @@ TRIALS_CADENCE = [
     (99, 200),   # iter 5+: strong model, high-quality data
 ]
 ```
-Look up trials per iteration in `main()` alongside games/batches from
-`ITERATION_CADENCE`, and pass it into `run_self_play()` which interpolates
-it into the `asn_spec` string.
-
-**Expected gain:** ~50% faster Phase A at iter 1–2; improved data quality
-at iter 5+.
-**Effort:** Low (15-minute change to `train_loop.py`).
-**Risk:** None — does not affect model architecture or data format.
+`get_cadence()` returns `(games, batches, trials)`. `run_self_play()`
+accepts `trials` and interpolates it into the `asn_spec` string. Logged
+per iteration in the main train_loop log.
 
 ---
 
@@ -269,8 +227,8 @@ Let TorchInductor handle dynamic shapes via `mode='default'`.
 
 Higher `trials` improves training data quality (stronger self-play → better
 targets) but does **not** improve throughput — the NNS is already saturated.
-Raise `trials` to 200 in iter 3+ once the model knows basic tactics, as a
-quality lever, not a performance lever.
+This is now handled automatically by `TRIALS_CADENCE` in `train_loop.py`
+(#9): iter 1–2 use 50 trials for speed, iter 5+ use 200 for quality.
 
 ### Don't raise `async_calls` above 32 on this hardware
 
@@ -284,20 +242,15 @@ headroom.
 
 ## Recommended sequence
 
-**Done:** #1 (24 clones), #8 (train_loop.py).
+**Done:** #1 (24 clones), #4 (position cache), #8 (train_loop.py),
+#9 (trials scaling).
 
 **Active TODO — self-play speed:**
 
-1. **Immediately** — #9 (per-iteration trials scaling). 15-minute change,
-   halves Phase A at early iterations. No downside.
-2. **Immediately** — #2 (channels-last). 2-line change, test on current
+1. **Immediately** — #2 (channels-last). 2-line change, test on current
    config. 10–25% GPU kernel speedup if it lands, zero-cost revert if not.
-3. **Next priority** — #4 (position cache). Medium effort (~half day).
-   10–20% fewer GPU evals at trials=100, 25–40% at trials=200+. Biggest
-   return when combined with #9 (higher trials at later iters = more
-   transpositions). Does not depend on any other item.
-4. **Before iter 4** — #3 (training fp16/compile) to shorten Phase B.
-5. **When above plateau** — #6 (TensorRT + INT8). 2–4× throughput.
+2. **Before iter 4** — #3 (training fp16/compile) to shorten Phase B.
+3. **When above plateau** — #6 (TensorRT + INT8). 2–4× throughput.
    ~1–2 days of work. Skip unless everything above plateaus and you need
    another step-change.
 

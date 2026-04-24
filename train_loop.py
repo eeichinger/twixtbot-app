@@ -46,8 +46,8 @@ LOGS_DIR = "logs"                      # all logs (main + per-phase) go here
 NUM_CLONES = 24                        # pmany --num_clones
 THREADS_PER_CLONE = 2                  # battle.py --threads
 ASYNC_CALLS = 32                       # asn_player async_calls=
-TRIALS = 100                           # asn_player trials= (MCTS playouts/move)
 ADD_NOISE = 0.25                       # asn_player add_noise= (Dirichlet root noise; 0 disables)
+POSITION_CACHE = True                  # asn_player position_cache= (transposition table)
 
 # --- NNS (inference server) ------------------------------------------------
 NNS_DEVICE = "cuda"
@@ -74,6 +74,16 @@ ITERATION_CADENCE = [
     (1,  1000,   500),   # iter 1
     (4,  5000,  1500),   # iter 2-4
     (99, 10000, 2000),   # iter 5+
+]
+
+# --- Per-iteration MCTS trials scaling -------------------------------------
+# List of (upper_iter_bound_inclusive, trials).
+# Weak models don't benefit from deep search; strong models do. Scaling
+# trials with iteration saves GPU time early and improves data quality late.
+TRIALS_CADENCE = [
+    (2,  50),    # iter 1-2: weak model, fast games
+    (4,  100),   # iter 3-4: developing model
+    (99, 200),   # iter 5+: strong model, high-quality data
 ]
 
 # --- Weighted sampling of self-play data -----------------------------------
@@ -124,10 +134,20 @@ class Logger:
 
 
 def get_cadence(iteration):
-    for bound, games, batches in ITERATION_CADENCE:
+    games, batches = None, None
+    for bound, g, b in ITERATION_CADENCE:
         if iteration <= bound:
-            return games, batches
-    return ITERATION_CADENCE[-1][1:]
+            games, batches = g, b
+            break
+    if games is None:
+        games, batches = ITERATION_CADENCE[-1][1], ITERATION_CADENCE[-1][2]
+
+    trials = TRIALS_CADENCE[-1][1]
+    for bound, t in TRIALS_CADENCE:
+        if iteration <= bound:
+            trials = t
+            break
+    return games, batches, trials
 
 
 _ITER_RE = re.compile(r'iter(\d+)_\d+\.bin$')
@@ -270,7 +290,7 @@ def stop_nns(nns_proc, nns_log_f, log):
 # Phase A — self-play
 # =============================================================================
 
-def run_self_play(iteration, games_target, output_dir, log):
+def run_self_play(iteration, games_target, trials, output_dir, log):
     sp_log_dir = os.path.join(LOGS_DIR, f"sp_iter{iteration}")
     if os.path.isdir(sp_log_dir):
         shutil.rmtree(sp_log_dir)
@@ -278,9 +298,11 @@ def run_self_play(iteration, games_target, output_dir, log):
     games_per_clone = max(1, games_target // NUM_CLONES)
     total_planned = games_per_clone * NUM_CLONES
 
+    cache_flag = ",position_cache=1" if POSITION_CACHE else ""
     asn_spec = (f"asn_player:location={NNS_SOCKET},"
-                f"trials={TRIALS},async_calls={ASYNC_CALLS},"
-                f"add_noise={ADD_NOISE},temperature={TEMPERATURE}")
+                f"trials={trials},async_calls={ASYNC_CALLS},"
+                f"add_noise={ADD_NOISE},temperature={TEMPERATURE}"
+                f"{cache_flag}")
 
     cmd = [
         sys.executable, 'src/pmany.py',
@@ -412,9 +434,11 @@ def main():
     log(f"starting model: {args.starting_model}")
     log(f"iterations: {args.start_iter}..{args.total_iters}")
     log(f"cadence: {ITERATION_CADENCE}")
+    log(f"trials cadence: {TRIALS_CADENCE}")
     log(f"self-play: {NUM_CLONES} clones x {THREADS_PER_CLONE} threads, "
-        f"trials={TRIALS}, async_calls={ASYNC_CALLS}, "
-        f"add_noise={ADD_NOISE}, temperature={TEMPERATURE}")
+        f"async_calls={ASYNC_CALLS}, "
+        f"add_noise={ADD_NOISE}, temperature={TEMPERATURE}, "
+        f"position_cache={POSITION_CACHE}")
     log(f"NNS: device={NNS_DEVICE}, capacity={NNS_CAPACITY}, "
         f"compile={NNS_USE_COMPILE}, fp16={NNS_USE_FP16}")
     if USE_WEIGHTED_SAMPLING:
@@ -429,9 +453,10 @@ def main():
 
     try:
         for iteration in range(args.start_iter, args.total_iters + 1):
-            games, batches = get_cadence(iteration)
+            games, batches, trials = get_cadence(iteration)
             log(f"--- iter {iteration} start: games={games}, "
-                f"batches={batches}, model={current_model} ---")
+                f"batches={batches}, trials={trials}, "
+                f"model={current_model} ---")
             iter_start = time.time()
 
             output_dir = rotate_spdata_tiers(iteration, log)
@@ -439,7 +464,8 @@ def main():
             nns_proc, nns_log_f = start_nns(current_model, nns_log_path, log)
             try:
                 wait_for_nns_ready(nns_proc, log)
-                sp_dur = run_self_play(iteration, games, output_dir, log)
+                sp_dur = run_self_play(iteration, games, trials,
+                                       output_dir, log)
             finally:
                 stop_nns(nns_proc, nns_log_f, log)
 
