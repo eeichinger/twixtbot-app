@@ -12,29 +12,10 @@ NNS is GPU-busy ~96% of wall clock; model (1.9M params, `num_filters=64`,
 
 ## Quick wins (low effort, low risk)
 
-### 1. Increase `--num_clones` from 16 to 20–24
+### 1. Increase `--num_clones` from 16 to 20–24 — **DONE**
 
-More parallel MCTS tree traversers means a smoother query stream to NNS,
-growing batch size without the burstiness seen at `async_calls=48`.
-
-```bash
-python src/pmany.py \
-  --num_clones 24 \
-  --log_dir logs/sp_gen \
-  -- \
-  python src/battle.py \
-    --white "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
-    --black "asn_player:location=/tmp/twixtbot_nns,trials=100,async_calls=32" \
-    --num_games 42 \
-    --threads 2 \
-    --training_file spdata/iter1_%n%.bin
-```
-
-Bump NNS `--capacity` to `3072` (24 × 2 × 2 × 32).
-
-**Expected gain:** batch size ~420, throughput 13k–14k evals/sec.
-**Why it works:** CPU is at ~55%, so oversubscribing 8 cores with 48 threads
-is fine — MCTS workers are I/O-bound on NNS replies, not compute-bound.
+Implemented in `train_loop.py` with `NUM_CLONES=24`, `NNS_CAPACITY=3072`.
+Result: batch size ~480, throughput ~14,200 evals/sec, GPU busy 96.5%.
 
 ### 2. Channels-last memory format
 
@@ -77,15 +58,49 @@ MCTS tree expansion calls the NN on many positions that are reachable via
 different move orders. A hash table keyed on board state → cached
 `(policy, value)` skips the NN entirely for repeats.
 
-**Where:** `src/asn_player.py`, around `_expand_leaf()`. Before calling
-`self.client.write_query`, check a `LRUCache` keyed on a canonical board hash.
-**Size:** ~1M entries ≈ 100–200 MB RAM per worker.
-**Empirical benefit on TwixT:** 20–40% fewer NN calls (depends on `trials`;
-higher trials = more transpositions hit). Effectively multiplies throughput
-without any GPU work.
+**Where:** `src/asn_player.py`, in `_expand_leaf()`. Before calling
+`self.client.write_query`, compute a hash of `self.game` board state and
+check a local LRU cache. On hit, populate `leaf.score` and `leaf.P`
+directly (re-apply Dirichlet noise fresh) and append to `finished_leaves`
+without any NNS round-trip. On miss, cache the un-rotated result in the
+`set_reply` callback.
 
-Implementation note: make the hash invariant under the two symmetries
-(board mirror + colour swap) for maximum hit rate.
+**Why worker-level, not NNS-level:** `asn_player` applies random rotation
+(`random_rotation=1`) before sending queries. The same board position
+produces different byte patterns at different rotations, so an NNS-level
+byte-hash cache would miss. The cache must be keyed on the pre-rotation
+game state.
+
+**Board hash:** `twixt.Game` has no hash function today. Options:
+- **Zobrist hashing** (incremental, O(1) per play/undo): pre-generate a
+  random 64-bit table indexed by `(color, row, col)` for pegs. XOR on
+  play, XOR again on undo. Fast and standard.
+- **Symmetry-aware Zobrist**: compute hashes for both the original and
+  the mirrored board, take the lexicographic minimum. Doubles the hit
+  rate for symmetric positions at negligible cost.
+
+**Cache entry size:** `score` (4 B) + `P` array (528 × 4 = 2,112 B) +
+hash key (8 B) + LRU overhead (~40 B) ≈ **2,164 bytes/entry**.
+
+**Memory budget:** 50 GB system RAM, 24 worker processes, NNS + OS ≈ 8 GB.
+Leaves ~42 GB for workers → ~1.7 GB per process → **~800K entries/process**.
+Conservative target: **500K entries** (~1.1 GB per process, ~26 GB total).
+Can tune down to 200K (~430 MB each, ~10 GB total) if memory is tighter.
+
+**Expected benefit on TwixT:** TwixT has no captures, so any permutation
+of independent moves reaches the same position — transpositions are
+structurally common. Estimated hit rates:
+- `trials=50–100` (shallow search): 10–20% cache hits
+- `trials=200+` (deeper search): 25–40% cache hits
+
+Since the GPU is the bottleneck (96.5% busy), every cached eval translates
+directly to faster game completion: 15% fewer evals → games finish ~15%
+faster → ~18% more games/hour (GPU fills freed capacity automatically).
+
+**Interaction with other items:** composes with everything (channels-last,
+TensorRT, trials scaling). Benefit grows at higher trials, so pairing
+with #9 (per-iteration trials scaling) is natural — the cache matters
+most at the higher-trials later iterations where data quality counts.
 
 ### 5. Larger model, once iter 2–3 is stable
 
@@ -144,7 +159,7 @@ See `docs/improvements.md` B9a for design rationale and KataGo references.
 
 ## Big levers (high effort, high reward)
 
-### 6. TensorRT or ONNX Runtime CUDA EP for inference
+### 6. TensorRT or ONNX Runtime CUDA EP for inference (includes INT8)
 
 Export the PyTorch model to ONNX and run NNS against TensorRT (or ORT CUDA EP).
 TensorRT on Blackwell with a 1.9M-param conv net typically gives **2–3×
@@ -155,9 +170,23 @@ inference throughput** over PyTorch + `torch.compile` because of:
   shape, picks the fastest)
 - Layout optimisations beyond what TorchInductor generates
 
+**INT8 quantization for NNS inference** is best done through TensorRT, not
+PyTorch. PyTorch's `torch.ao.quantization` targets CPU; its CUDA INT8
+path is immature for conv nets. TensorRT's INT8 calibration (post-training
+quantization on a small calibration set) is the proven approach and folds
+into the same integration work.
+
+FP16→INT8 halves memory bandwidth per eval. Since the model is
+memory-bandwidth limited (35% SM utilisation with FP16), INT8 could push
+SM utilisation toward 50–60% and add another 1.3–1.5× on top of the
+FP16→TRT baseline gain. Combined **FP16 PyTorch → INT8 TRT: 3–4×
+throughput** is realistic.
+
 **What it requires:**
 - ONNX export step in the NNS startup (already have `tools/export_onnx.py`)
 - TensorRT engine build step (one-time per checkpoint, ~30 seconds)
+- INT8 calibration dataset: ~1,000 positions from `spdata/`, run once per
+  model checkpoint
 - Swap out `nneval.NNEvaluater` for a TRT-backed evaluator in `src/nns.py`
 - Install `tensorrt` and `pycuda` (or use `polygraphy`)
 
@@ -186,6 +215,41 @@ pmany self-play) and Phase B (train.py) unattended, with weighted-tier
 Still open: automatic arena-gated promotion (run arena at the end of each
 iteration; only accept the new model if it beats the prior by >55% at
 n=200). Currently the loop accepts every trained model unconditionally.
+
+### 9. Per-iteration MCTS trials scaling
+
+Use fewer MCTS trials at early iterations (when the model is weak) and
+ramp up at later iterations (when policy quality makes deeper search
+productive).
+
+**Rationale:** at iter 1–2 the policy head is near-random. Running 100
+trials explores ~100 leaves out of ~500 legal moves — the search is too
+shallow for the extra trials to find tactics the policy missed. At
+`trials=50`, each move's MCTS is ~50% faster. Since GPU is the
+bottleneck, this directly halves self-play Phase A wall time for early
+iterations.
+
+At iter 5+ the policy is strong enough that deeper search (200+ trials)
+finds tactical lines the policy ranks incorrectly, producing better
+training targets. The cost per game doubles, but each game's training
+signal is worth more.
+
+**Implementation:** add `TRIALS_CADENCE` to `train_loop.py`:
+```python
+TRIALS_CADENCE = [
+    (2,  50),    # iter 1-2: weak model, fast games
+    (4,  100),   # iter 3-4: developing model
+    (99, 200),   # iter 5+: strong model, high-quality data
+]
+```
+Look up trials per iteration in `main()` alongside games/batches from
+`ITERATION_CADENCE`, and pass it into `run_self_play()` which interpolates
+it into the `asn_spec` string.
+
+**Expected gain:** ~50% faster Phase A at iter 1–2; improved data quality
+at iter 5+.
+**Effort:** Low (15-minute change to `train_loop.py`).
+**Risk:** None — does not affect model architecture or data format.
 
 ---
 
@@ -220,15 +284,26 @@ headroom.
 
 ## Recommended sequence
 
-1. **Next run** — try #2 (channels-last) on the current running config.
-   Throughput is already at 14k/sec from #1 (24 clones). Free upside if it
-   lands, revert if not.
-2. **Before iter 4** — do #3 (training fp16/compile) to shorten Phase B.
-3. **Iter 5+ in parallel** — branch a #5a lineage (deeper policy head,
-   warm-starts from existing `spdata/`). Compare in arena every 3 iters.
-4. **When current lineage plateaus** — switch to #5 (larger model) and/or
-   commit to a #5b (KataGo global pooling) retrain. Both pair well together.
-5. **Any time** — add #4 (position cache). Big throughput win with minimal
-   complexity, doesn't depend on any of the above.
-6. **Only if willing to invest a weekend** — #6 (TensorRT). Skip unless
-   everything above plateaus and you need another step-change.
+**Done:** #1 (24 clones), #8 (train_loop.py).
+
+**Active TODO — self-play speed:**
+
+1. **Immediately** — #9 (per-iteration trials scaling). 15-minute change,
+   halves Phase A at early iterations. No downside.
+2. **Immediately** — #2 (channels-last). 2-line change, test on current
+   config. 10–25% GPU kernel speedup if it lands, zero-cost revert if not.
+3. **Next priority** — #4 (position cache). Medium effort (~half day).
+   10–20% fewer GPU evals at trials=100, 25–40% at trials=200+. Biggest
+   return when combined with #9 (higher trials at later iters = more
+   transpositions). Does not depend on any other item.
+4. **Before iter 4** — #3 (training fp16/compile) to shorten Phase B.
+5. **When above plateau** — #6 (TensorRT + INT8). 2–4× throughput.
+   ~1–2 days of work. Skip unless everything above plateaus and you need
+   another step-change.
+
+**Active TODO — self-play quality (model architecture):**
+
+6. **Iter 5+ in parallel** — #5a (deeper policy head, warm-starts from
+   existing `spdata/`). Compare in arena every 3 iters.
+7. **When current lineage plateaus** — #5 (larger model) and/or #5b
+   (KataGo global pooling) retrain. Both pair well together.
