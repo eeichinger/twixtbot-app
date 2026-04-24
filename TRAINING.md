@@ -617,3 +617,147 @@ than a CPU upgrade.
   costs 10–15% CPU under WSL2.
 - Set Windows power plan to **Best Performance** during training runs.
 - Close Chrome/Edge — background timers degrade 3D V-Cache hit rates.
+
+---
+
+## Appendix C — Running on Apple Silicon (Mac)
+
+The full training/arena pipeline runs on Apple M1/M2/M3 Macs using the **MPS**
+backend (Metal Performance Shaders). Intended use case: small-scale iteration,
+sanity checks, and running the arena locally against a candidate model while
+the 5070 Ti PC is busy with self-play. For serious training volume, SSH into
+the PC — the Mac is 5–10× slower on this workload.
+
+### Prerequisites
+
+- Python 3.11 (the repo's `requirements.txt` targets 3.11). Newer minor
+  versions (3.12+) may also work; Python 3.14 will not — `tensorflow` has no
+  wheels, blocking `tools/convert_tf1_to_pt.py`. Install via Homebrew:
+  ```bash
+  brew install python@3.11
+  /opt/homebrew/bin/python3.11 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+- PyTorch with MPS support ships in the standard `torch` wheel — no extra
+  install needed.
+- `tools/convert_tf1_to_pt.py` additionally needs TensorFlow. On macOS the
+  package is `tensorflow` (not `tensorflow-cpu`, which is Linux-only) — a
+  one-off `pip install tensorflow` in the venv is enough.
+
+### Device selection
+
+Use `--device mps`. The MPS backend is **5-8× faster than CPU** for this
+model; use CPU only as a correctness fallback when diagnosing MPS issues.
+
+```bash
+# Fast (MPS)
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
+  --model models/v3.pt --capacity 1024 --compile
+
+# Slow fallback (CPU) — only if MPS has a known problem
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device cpu \
+  --model models/v3.pt --capacity 1024
+```
+
+`--fp16` has no effect on MPS (disabled for CPU too; see `src/nneval.py:34`).
+Leave it off.
+
+### `--compile` on MPS
+
+When `--compile` is passed, `NNEvaluater` automatically uses
+`torch.compile(..., dynamic=True)` on MPS. This is important: without
+`dynamic=True`, Inductor recompiles for every new batch size, inflating
+per-call overhead 3× (see measurements below). On CUDA, shape specialization
+is the right default and `dynamic=False` stays active.
+
+Net effect of `--compile` on MPS at steady state:
+- `a` (fixed per-call overhead): 21.7 ms → **15.0 ms** (−30%)
+- `b` (per-example cost): 0.457 ms → 0.593 ms (+30%)
+- Breakeven batch: ~100 positions. At observed batch sizes 70-130, a 3-5%
+  throughput win.
+
+Small gain, but free once the flag is wired. Recommended on by default.
+
+### Arena on Mac
+
+Two NNS servers on different socket paths, then `pmany` with 8 clones:
+
+```bash
+# Terminal A
+python src/nns.py --location /tmp/twixtbot_nns_v2 --device mps \
+  --model models/v2.pt --capacity 1024 --compile
+
+# Terminal B
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
+  --model models/v3.pt --capacity 1024 --compile
+
+# Terminal C — run the arena
+rm -rf logs/arena && python src/pmany.py \
+  --num_clones 8 \
+  --log_dir logs/arena \
+  -- \
+  python src/battle.py \
+    --white "asn_player:location=/tmp/twixtbot_nns_v2,trials=50,async_calls=64" \
+    --black "asn_player:location=/tmp/twixtbot_nns_v3,trials=50,async_calls=64" \
+    --num_games 50 \
+    --threads 2
+```
+
+Notes on the parameters:
+- `trials=50` is reduced from the reference `trials=400` because MPS
+  throughput caps arena games-per-minute. Use 50–100 for quick smoke tests
+  on the Mac; run the real `trials=400` arena on the PC.
+- `async_calls=64` (up from the 32 default) lifts average batch size into
+  the 100-130 range — worth ~3% extra throughput over 32. Going higher
+  has diminishing returns on MPS (memory-bandwidth bound).
+- `--capacity 1024` per NNS is fine; both share unified memory.
+
+### Expected throughput
+
+Steady-state on M1/M2 with `--compile` and `async_calls=64`:
+
+| NNS GPU stats | value |
+|---|---|
+| `a` (fixed per batch) | ~15 ms |
+| `b` (per position) | ~0.6 ms |
+| `a/b` (crossover batch) | ~25 |
+| Typical `W/N` (actual batch) | 100-130 |
+| **Throughput** | **~1400 positions/sec** |
+
+For reference: the 5070 Ti with `--compile --fp16` processes ~10,000+
+positions/sec on the same model. If the Mac number looks far lower than
+1400 pos/s, check: (a) battery not on low-power mode, (b) nothing else
+saturating the GPU, (c) let it run 10+ minutes before reading stats —
+`torch.compile` warmup can take several minutes to fully amortize.
+
+### macOS-specific gotchas
+
+- **Multiprocessing start method** — `src/nns.py` relies on the `fork`
+  start method. macOS defaults to `spawn` since Python 3.8, which cannot
+  transport `mmap` objects to child processes. If you see
+  `TypeError: cannot pickle 'mmap.mmap' object`, set `fork` explicitly
+  at the top of `src/nns.py`:
+  ```python
+  import multiprocessing
+  multiprocessing.set_start_method('fork', force=True)
+  ```
+- **Socket accept backlog** — `src/smmpp.py` uses `listen(128)` which
+  matches macOS's `kern.somaxconn`. Earlier versions used `listen(5)`
+  which caused `Connection refused` under arena load on Mac. If rolling
+  back, keep the bump.
+- **Training on Mac** — `src/train.py` works on MPS but is not
+  throughput-competitive with the PC. Acceptable for debugging training
+  code; not for real iterations.
+
+### When to use the Mac vs the PC
+
+| Task | Where |
+|---|---|
+| Code iteration, debugging, unit tests | Mac |
+| Small arena smoke test (n=20-50, trials=50) | Mac |
+| Full arena evaluation (n=400, trials=400) | PC (5070 Ti) |
+| Self-play training | PC (5070 Ti) |
+| Model conversion + ONNX export + quantization | CI (Ubuntu) |
+
+See `docs/wsl2-ssh-setup.md` for the SSH workflow for offloading to the PC.
