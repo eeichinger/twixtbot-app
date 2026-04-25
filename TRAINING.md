@@ -683,28 +683,27 @@ Small gain, but free once the flag is wired. Recommended on by default.
 
 ### Arena on Mac
 
-Two NNS servers on different socket paths, then `pmany` with 8 clones:
+The simplest path is `arena.py` — one command, supervises both NNS instances
+and all battle clones, prints aggregated progress and a final summary with
+confidence interval:
 
 ```bash
-# Terminal A
-python src/nns.py --location /tmp/twixtbot_nns_v2 --device mps \
-  --model models/v2.pt --capacity 1024 --compile
-
-# Terminal B
-python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
-  --model models/v3.pt --capacity 1024 --compile
-
-# Terminal C — run the arena
-rm -rf logs/arena && python src/pmany.py \
-  --num_clones 8 \
-  --log_dir logs/arena \
-  -- \
-  python src/battle.py \
-    --white "asn_player:location=/tmp/twixtbot_nns_v2,trials=200,async_calls=32" \
-    --black "asn_player:location=/tmp/twixtbot_nns_v3,trials=200,async_calls=32" \
-    --num_games 50 \
-    --threads 2
+python src/arena.py \
+  --model-a models/v2.pt --model-b models/v3.pt \
+  --device mps \
+  --total_games 400 --num_clones 8 \
+  --trials 200 --async_calls 32
 ```
+
+Defaults: `--threads 2` (the sweet spot per Appendix B), `--compile` enabled,
+logs to `logs/arena/`. Sockets are derived from model basenames (e.g.
+`models/v2.pt` → `/tmp/twixtbot_nns_v2.sock`). NNS `--capacity` is computed
+automatically from `num_clones × threads × async_calls × 2`.
+
+The lower-level `pmany + battle.py` form is still available for anything
+that arena.py doesn't cover — for example, running with `--training_file`,
+custom init moves, or a mix of player types. See `src/pmany.py --help`
+and `src/battle.py --help`.
 
 Notes on the parameters:
 - `trials=200` is a balance: enough search depth for arena results to be
