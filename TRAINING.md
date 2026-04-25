@@ -683,54 +683,68 @@ Small gain, but free once the flag is wired. Recommended on by default.
 
 ### Arena on Mac
 
-Two NNS servers on different socket paths, then `pmany` with 8 clones:
+The simplest path is `arena.py` — one command, supervises both NNS instances
+and all battle clones, prints aggregated progress and a final summary with
+confidence interval:
 
 ```bash
-# Terminal A
-python src/nns.py --location /tmp/twixtbot_nns_v2 --device mps \
-  --model models/v2.pt --capacity 1024 --compile
-
-# Terminal B
-python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
-  --model models/v3.pt --capacity 1024 --compile
-
-# Terminal C — run the arena
-rm -rf logs/arena && python src/pmany.py \
-  --num_clones 8 \
-  --log_dir logs/arena \
-  -- \
-  python src/battle.py \
-    --white "asn_player:location=/tmp/twixtbot_nns_v2,trials=50,async_calls=64" \
-    --black "asn_player:location=/tmp/twixtbot_nns_v3,trials=50,async_calls=64" \
-    --num_games 50 \
-    --threads 2
+python src/arena.py \
+  --model-a models/v2.pt --model-b models/v3.pt \
+  --device mps \
+  --total_games 400 --num_clones 8 \
+  --trials 200 --async_calls 32
 ```
 
+Defaults: `--threads 2` (the sweet spot per Appendix B), `--compile` enabled,
+logs to `logs/arena/`. Sockets are derived from model basenames (e.g.
+`models/v2.pt` → `/tmp/twixtbot_nns_v2.sock`). NNS `--capacity` is computed
+automatically from `num_clones × threads × async_calls × 2`.
+
+The lower-level `pmany + battle.py` form is still available for anything
+that arena.py doesn't cover — for example, running with `--training_file`,
+custom init moves, or a mix of player types. See `src/pmany.py --help`
+and `src/battle.py --help`.
+
 Notes on the parameters:
-- `trials=50` is reduced from the reference `trials=400` because MPS
-  throughput caps arena games-per-minute. Use 50–100 for quick smoke tests
-  on the Mac; run the real `trials=400` arena on the PC.
-- `async_calls=64` (up from the 32 default) lifts average batch size into
-  the 100-130 range — worth ~3% extra throughput over 32. Going higher
-  has diminishing returns on MPS (memory-bandwidth bound).
+- `trials=200` is a balance: enough search depth for arena results to be
+  trustworthy, but lower than the reference `trials=400` to keep wall-clock
+  reasonable on Mac. Use 50-100 only for very quick smoke tests; below
+  ~150 trials, low-search noise can dominate small model strength
+  differences (see Appendix E).
+- `async_calls=32` is the per-client in-flight limit. On MPS, **higher
+  values do not help** if the trials count is already 200+ — the
+  query inflow rate from MCTS at higher trials is what drives larger
+  batches at the NNS, not the per-client cap.
 - `--capacity 1024` per NNS is fine; both share unified memory.
 
 ### Expected throughput
 
-Steady-state on M1/M2 with `--compile` and `async_calls=64`:
+Throughput on MPS depends strongly on the average batch size, which in turn
+depends on the `trials` count (more trials → more queries per client per
+second → larger batches at the NNS). Two distinct regimes to expect:
 
-| NNS GPU stats | value |
-|---|---|
-| `a` (fixed per batch) | ~15 ms |
-| `b` (per position) | ~0.6 ms |
-| `a/b` (crossover batch) | ~25 |
-| Typical `W/N` (actual batch) | 100-130 |
-| **Throughput** | **~1400 positions/sec** |
+| Config | Typical `W/N` | `b` (ms/pos) | `a/b` | **Throughput** |
+|---|---|---|---|---|
+| `trials=50, async_calls=64` (smoke test) | ~110 | 0.58 | ~19 | ~1450 pos/s |
+| **`trials=200, async_calls=32` (proper arena)** | **~170** | **0.36** | **~66** | **~2000 pos/s** |
+
+`b` is *not* constant on MPS. There's a batch-size knee where the GPU
+transitions from being underutilized (per-example cost dominated by
+dispatch overhead) to being properly fed (per-example cost approaches
+the silicon's compute limit). For this 20-block × 48-filter ResNet that
+knee sits somewhere around `W/N ≈ 130-150`. Push batches across the
+knee and per-example cost drops sharply.
+
+Practical implication: the `1/b` asymptote you can compute from any single
+NNS milestone reading is only a local prediction. Batch regimes well
+above the data range can show a *different* `b`, and therefore a higher
+ceiling. Don't conclude "the Mac is at its throughput ceiling" from a
+short, low-trials run.
 
 For reference: the 5070 Ti with `--compile --fp16` processes ~10,000+
 positions/sec on the same model. If the Mac number looks far lower than
-1400 pos/s, check: (a) battery not on low-power mode, (b) nothing else
-saturating the GPU, (c) let it run 10+ minutes before reading stats —
+the table values, check: (a) battery not on low-power mode, (b) nothing
+else saturating the GPU, (c) let it run 10+ minutes before reading stats —
 `torch.compile` warmup can take several minutes to fully amortize.
 
 ### macOS-specific gotchas
@@ -837,9 +851,21 @@ Examples:
 
 So the regression lets you answer "what if I could push batch sizes higher?"
 without actually running the experiment. The asymptote (very large W)
-approaches `1/b = 1/0.000593 ≈ 1686 pos/s` — that's the theoretical maximum
-throughput on this device, achievable only if you could amortize the fixed
+approaches `1/b = 1/0.000593 ≈ 1686 pos/s` — the maximum throughput
+predicted *by this fit*, achievable only if you could amortize the fixed
 overhead `a` across infinite work.
+
+**Caveat: `b` is only locally constant.** The regression assumes a linear
+time-vs-work relationship, which holds well within the range of batch sizes
+you actually observed. Real GPUs (especially integrated ones like MPS) have
+a *batch-size knee* — below it, compute units are underutilized and per-
+example cost is high; above it, the device is properly fed and `b` drops
+sharply. So extrapolating `1/b` from a low-batch run can underestimate the
+true ceiling. If you push batch size into a different regime (e.g. by
+raising `trials`), refit and you may see a meaningfully smaller `b` and
+higher asymptote. See Appendix C for an example: at `W/N ≈ 110` MPS shows
+`b ≈ 0.58 ms` (asymptote ~1700 pos/s); at `W/N ≈ 170` the same hardware
+shows `b ≈ 0.36 ms` (asymptote ~2800 pos/s).
 
 ### Quick recap of the symbols
 
