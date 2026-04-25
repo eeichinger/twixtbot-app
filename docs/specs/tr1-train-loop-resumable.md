@@ -106,7 +106,12 @@ For each iteration `N` in `range(start_iter, total_iters + 1)`:
 
 ```python
 LEARNING_STATE_BYTES = 1789  # naf.LearningState.NUM_BYTES; hardcoded for resilience
-AVG_MOVES_PER_GAME = 35      # configurable; affects only resume-game-count estimate
+AVG_MOVES_PER_GAME = 410     # configurable; affects only resume-game-count estimate.
+                             # Self-play TwixT games are long: empirical mean across
+                             # iters 4, 5, 6 = 420, 413, 403 moves/game (decreasing
+                             # as the model gets more decisive). 410 is a slightly
+                             # conservative pick that errs toward over-running
+                             # (which produces extra valid data, not wrong data).
 
 def positions_in_iteration(iteration, output_dir):
     pattern = re.compile(rf'^iter{iteration}_\d+\.bin$')
@@ -159,8 +164,11 @@ Total new code: ~40 lines, all in `train_loop.py`.
 1. **`AVG_MOVES_PER_GAME` accuracy.** Affects only resume estimation precision.
    If we underestimate, we run a few more games than needed (harmless). If we
    overestimate, we run a few fewer (less data than nominal target — also fine;
-   cadence numbers are heuristic). Default 35 to be calibrated empirically
-   from existing `iter6_*.bin` data via `show_bin_info.py` before implementation.
+   cadence numbers are heuristic). Default **410**, calibrated empirically from
+   `iter4`, `iter5`, `iter6` data via `show_bin_info.py` (means: 420, 413, 403).
+   The decreasing trend reflects stronger models being more decisive; 410 stays
+   roughly accurate for the next several iterations and biases slightly toward
+   over-running (extra data, not corrupt data) when it drifts.
 
 2. **Torn final record protection.** If a battle clone is killed mid-write
    (between writes to a single record), the file could end with a partial
