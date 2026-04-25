@@ -761,3 +761,96 @@ saturating the GPU, (c) let it run 10+ minutes before reading stats —
 | Model conversion + ONNX export + quantization | CI (Ubuntu) |
 
 See `docs/wsl2-ssh-setup.md` for the SSH workflow for offloading to the PC.
+
+---
+
+## Appendix D — How to calculate throughput from NNS GPU stats
+
+NNS prints a milestone stats block every `--milestone_step` positions. The
+`gpu:` line is the one that matters for throughput. Example from a real run:
+
+```
+gpu: N=4110 T=358.384 W=500303 W/N=121.7 avg=0.015033 + 0.000593*W a/b=25.4
+```
+
+Two ways to compute throughput from this. Both give the same answer for the
+run you measured. The simpler one is just division.
+
+### Method 1 (simple): direct ratio from raw counts
+
+The NNS counts every position evaluated (`W`) and every second spent in GPU
+forward passes (`T`):
+
+```
+positions / second = W / T = 500303 / 358.384 = 1395.8 pos/s
+```
+
+That's the actual throughput observed during the run. No model, no math
+beyond division.
+
+### Method 2 (modeled): plug observed batch size into the regression
+
+The line `avg = 0.015033 + 0.000593*W` is a linear regression fit:
+
+```
+time_per_batch (seconds) = a + b · W
+                         = 0.015033 + 0.000593 · W
+```
+
+where `W` here is the batch size (number of positions in that one call). At
+the observed average batch size `W = 121.7`:
+
+```
+time_per_batch = 0.015033 + 0.000593 · 121.7
+               = 0.015033 + 0.072168
+               = 0.087201 s
+```
+
+That's the predicted time for one batch of 121.7 positions. Positions per
+second:
+
+```
+positions_per_second = batch_size / time_per_batch
+                     = 121.7 / 0.087201
+                     = 1395.4 pos/s
+```
+
+Same number (within rounding) as Method 1. They have to match — the
+regression is fit on the same data that produced `T` and `W`.
+
+### Why bother with Method 2?
+
+Because once you have `a` and `b`, you can predict throughput at batch sizes
+you didn't actually observe. That's the whole point of the regression.
+Examples:
+
+| hypothetical batch | predicted batch time | predicted pos/s |
+|---|---|---|
+| 32 | 0.015033 + 32·0.000593 = 0.0340 s | 941 |
+| 64 | 0.015033 + 64·0.000593 = 0.0530 s | 1208 |
+| **121.7 (observed)** | **0.0872 s** | **1395** |
+| 256 | 0.015033 + 256·0.000593 = 0.1668 s | 1535 |
+| 1000 | 0.015033 + 1000·0.000593 = 0.6080 s | 1645 |
+
+So the regression lets you answer "what if I could push batch sizes higher?"
+without actually running the experiment. The asymptote (very large W)
+approaches `1/b = 1/0.000593 ≈ 1686 pos/s` — that's the theoretical maximum
+throughput on this device, achievable only if you could amortize the fixed
+overhead `a` across infinite work.
+
+### Quick recap of the symbols
+
+| symbol | meaning |
+|---|---|
+| `N` | total batches (forward passes) so far |
+| `T` | total seconds in those forward passes |
+| `W` | total positions evaluated across all batches |
+| `W/N` | average batch size — what you actually ran at |
+| `a` | fixed per-batch overhead (kernel launch / dispatch); ~15 ms here |
+| `b` | per-position compute cost; ~0.6 ms here |
+| `a/b` | crossover batch — at this batch size, fixed cost = compute cost |
+
+Two quick rules of thumb:
+- **Are batches big enough?** Compare `W/N` to `a/b`. Example: 121.7 vs 25.4
+  → batches are ~5× the crossover, so well-batched.
+- **Real throughput?** Just `W / T`. You don't need the regression for that.
