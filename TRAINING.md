@@ -450,6 +450,40 @@ The script:
 - Stops NNS cleanly between phases via `--kill`; cleans up stale `.sock` /
   `.shm` files before each new NNS start.
 
+### Pausing to free the GPU
+
+Long-running self-play and the things you actually want your PC for (gaming,
+video calls, anything GPU-heavy) compete for the same hardware. The 5070 Ti
+isn't preemptible the way CPU is — the only reliable way to free it is to
+shut down the NNS process that holds it.
+
+Use the convenience script:
+
+```bash
+scripts/pause-self-play.sh
+```
+
+It SIGINTs `arena.py` if running (which lets it cleanly terminate clones and
+SUICIDE-kill its NNS instances), SIGTERMs any stray `battle.py` / `pmany.py`
+clones, then sends `--kill` to any remaining NNS processes by parsing their
+`--location` from the command line. The GPU is free within ~10 seconds.
+
+To resume:
+
+- **Self-play training:** re-run the command you used to start it
+  (`train_loop.py models/vN.pt --start_iter K`, or your manual sequence).
+  The orchestrator reads the latest checkpoint; you lose at most one
+  in-progress game per worker (completed games are flushed to `spdata/` per-game).
+- **Arena (`arena.py`):** the script stops it cleanly, but `arena.py` runs
+  are *not* mid-flight resumable — restarting begins a fresh batch of games.
+  If you needed the partial results, copy `logs/arena/` aside before pausing.
+
+The script does **not** touch `train.py` (the per-iteration training step).
+Training a single iteration takes minutes-to-hours; if you really need the
+GPU mid-training, kill it manually and re-run the iteration. Otherwise
+let it finish — its output checkpoint is what the next iteration's
+self-play uses.
+
 ---
 
 ## Verification Smoke Test
