@@ -269,12 +269,13 @@ def print_status(args, states, nns_a_log, nns_b_log, total_games, elapsed):
 
     pct_done = 100.0 * games_done / total_games if total_games else 0
     eta = elapsed * (total_games - games_done) / games_done if games_done > 0 else 0.0
+    gpm = games_done * 60 / elapsed if elapsed > 0 else 0.0
     cpu_pct = psutil.cpu_percent(interval=None)
     n_cores = psutil.cpu_count(logical=True) or 1
 
     print()
     print(f"[{fmt_hms(elapsed)} elapsed | {games_done}/{total_games} games "
-          f"({pct_done:.0f}%) | ETA {fmt_hms(eta)}]")
+          f"({pct_done:.0f}%) | {gpm:.1f} games/minute | ETA {fmt_hms(eta)}]")
     print(f"  : {score_a:6.1f} ({pct_a:5.1f}%) model-a ({args.model_a})")
     print(f"  : {score_b:6.1f} ({pct_b:5.1f}%) model-b ({args.model_b})")
     print(f"  CPU: {cpu_pct:5.1f}% of {n_cores} cores")
