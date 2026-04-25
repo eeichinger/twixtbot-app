@@ -4,7 +4,7 @@ Consolidated from `docs/improvements.md`, `docs/lg-planned-features.md`,
 `docs/network-pvp-research.md`, and a feature comparison against
 `github.com/eeichinger/twixtbot-ui` (the desktop Python app).
 
-Last updated: 2026-04-09 (session 5).
+Last updated: 2026-04-25 (added TR1 — resumable train_loop).
 
 ---
 
@@ -196,20 +196,36 @@ Full research in `docs/network-pvp-research.md`. Recommendation: PeerJS + OpenRe
 
 ---
 
+## 8 · Training Pipeline
+
+Self-play orchestration and resumability — see `TRAINING.md` for the user-facing
+workflow.
+
+| ID | Feature | Priority | Effort | Status | Notes |
+|----|---------|----------|--------|--------|-------|
+| TR1 | Resumable `train_loop.py` (mid-iteration) | **P1** | Low | Pending | ~40 lines; spec in `docs/specs/tr1-train-loop-resumable.md`. Avoids re-running full 4–8 hour Phase A after every paused gaming session. |
+
+---
+
 ## Recommended next actions
 
 All P1 features and most P2 features are shipped. Remaining work by category:
 
 ### No retraining needed
 
-1. **A3** — Tree reuse (4-ply + O(N²) fix). Strongest pure-algorithm gain available
+1. **TR1** — Resumable `train_loop.py`. After `pause-self-play.sh` interrupts an
+   iteration, restarting must pick up mid-Phase-A instead of redoing 4–8 hours
+   of self-play. Filesystem markers + position counting from `.bin` files; no
+   external state. Spec: `docs/specs/tr1-train-loop-resumable.md`.
+
+2. **A3** — Tree reuse (4-ply + O(N²) fix). Strongest pure-algorithm gain available
    without new model weights. Pair with A4 (cpuct tuning) and validate with a small
    arena (100 self-play games).
 
-2. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
+3. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
    low effort, high reliability payoff.
 
-3. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
+4. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
    from the worker; draw as an arrow chain on the board canvas. High effort.
 
 ### Requires retraining
