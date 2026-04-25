@@ -1,1 +1,12 @@
 * text=auto
+
+# Force LF line endings for files that must run as Unix scripts.
+# Without this, `* text=auto` lets per-machine core.autocrlf settings
+# (e.g. WSL2 on a Windows host inheriting autocrlf=true) check these
+# out with CRLF, breaking the shebang line: env can't find `bash\r`.
+*.sh   text eol=lf
+*.bash text eol=lf
+Makefile text eol=lf
+
+# PowerShell scripts are Windows-side; CRLF is fine for them.
+*.ps1  text eol=crlf
