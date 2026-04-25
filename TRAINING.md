@@ -470,10 +470,15 @@ clones, then sends `--kill` to any remaining NNS processes by parsing their
 
 To resume:
 
-- **Self-play training:** re-run the command you used to start it
-  (`train_loop.py models/vN.pt --start_iter K`, or your manual sequence).
-  The orchestrator reads the latest checkpoint; you lose at most one
-  in-progress game per worker (completed games are flushed to `spdata/` per-game).
+- **Self-play training:** re-run the same `train_loop.py` command. The
+  orchestrator drops sentinel files (`iter{N}.phase_a_done`, `iter{N}.done`)
+  in `spdata/` after each successful phase, so on restart it skips already-
+  completed iterations and *resumes mid-Phase-A* by counting positions in
+  the existing `iter{N}_*.bin` files. Wasted work is bounded to roughly one
+  in-progress game per clone (~20 seconds of NNS work); a paused
+  multi-hour iteration no longer restarts from scratch. Spec:
+  `docs/specs/tr1-train-loop-resumable.md`. Use `show_bin_info.py` to
+  inspect a `.bin` file at any time.
 - **Arena (`arena.py`):** the script stops it cleanly, but `arena.py` runs
   are *not* mid-flight resumable — restarting begins a fresh batch of games.
   If you needed the partial results, copy `logs/arena/` aside before pausing.

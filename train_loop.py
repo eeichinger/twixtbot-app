@@ -100,6 +100,17 @@ RECENCY_WINDOW = 3                     # iters N-RECENCY_WINDOW+1 .. N count as 
 TOTAL_ITERATIONS = 5                   # how many iterations to run by default
 SELF_PLAY_HEARTBEAT_SEC = 60           # how often to print "still running" during Phase A
 
+# --- Resume / state markers ------------------------------------------------
+# After each successful Phase A and Phase B, train_loop drops a sentinel file
+# in SPDATA_DIR. On restart, the per-iteration loop skips phases whose marker
+# already exists, and partially-completed Phase A iterations resume by counting
+# positions in iter{N}_*.bin (each LearningState record is fixed-size).
+# See docs/specs/tr1-train-loop-resumable.md.
+LEARNING_STATE_BYTES = 1789            # naf.LearningState.NUM_BYTES for board=24
+AVG_MOVES_PER_GAME = 410               # empirical mean across iters 4-6 (calibrated
+                                       # via show_bin_info.py); used only to estimate
+                                       # how many games are already done on resume
+
 
 # =============================================================================
 # Helpers
@@ -190,6 +201,41 @@ def rotate_spdata_tiers(iteration, log):
         log(f"spdata rotation: moved {moved} files (iters <= {cutoff}) "
             f"from w={RECENT_WEIGHT}/ to w={OLDER_WEIGHT}/")
     return recent_dir
+
+
+# =============================================================================
+# Resume markers
+# =============================================================================
+
+def marker_path_phase_a_done(iteration):
+    return os.path.join(SPDATA_DIR, f"iter{iteration}.phase_a_done")
+
+
+def marker_path_done(iteration):
+    return os.path.join(SPDATA_DIR, f"iter{iteration}.done")
+
+
+def positions_in_iteration(iteration, search_dir):
+    """Sum complete LearningState records across iter{N}_*.bin files."""
+    pattern = re.compile(rf'^iter{iteration}_\d+\.bin$')
+    if not os.path.isdir(search_dir):
+        return 0
+    total = 0
+    for fname in os.listdir(search_dir):
+        if pattern.match(fname):
+            size = os.path.getsize(os.path.join(search_dir, fname))
+            total += size // LEARNING_STATE_BYTES
+    return total
+
+
+def write_marker_atomic(path, content):
+    """Write a sentinel file with crash-safe semantics: tmp + fsync + rename."""
+    tmp = path + ".partial"
+    with open(tmp, "w") as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 # =============================================================================
@@ -454,24 +500,72 @@ def main():
     try:
         for iteration in range(args.start_iter, args.total_iters + 1):
             games, batches, trials = get_cadence(iteration)
+            next_model = os.path.join(model_dir, f"v{iteration}.pt")
+
+            # If this iteration is fully complete from a previous run, skip it
+            # entirely and advance current_model. (See docs/specs/tr1-train-loop-resumable.md.)
+            if os.path.exists(marker_path_done(iteration)):
+                log(f"--- iter {iteration} already complete (marker found), "
+                    f"skipping; current_model = {next_model} ---")
+                current_model = next_model
+                continue
+
             log(f"--- iter {iteration} start: games={games}, "
                 f"batches={batches}, trials={trials}, "
                 f"model={current_model} ---")
             iter_start = time.time()
 
             output_dir = rotate_spdata_tiers(iteration, log)
-            nns_log_path = os.path.join(LOGS_DIR, f"nns_iter{iteration}.log")
-            nns_proc, nns_log_f = start_nns(current_model, nns_log_path, log)
-            try:
-                wait_for_nns_ready(nns_proc, log)
-                sp_dur = run_self_play(iteration, games, trials,
-                                       output_dir, log)
-            finally:
-                stop_nns(nns_proc, nns_log_f, log)
 
-            next_model = os.path.join(model_dir, f"v{iteration}.pt")
+            # Phase A — skip if its marker exists (interrupted between Phase A
+            # and Phase B). Otherwise count any partial data and run only the
+            # remaining games.
+            if os.path.exists(marker_path_phase_a_done(iteration)):
+                log(f"iter {iteration} Phase A already complete (marker found), "
+                    f"skipping to Phase B")
+                sp_dur = 0.0
+            else:
+                positions_so_far = positions_in_iteration(iteration, output_dir)
+                if positions_so_far > 0:
+                    estimated_games_done = positions_so_far // AVG_MOVES_PER_GAME
+                    games_remaining = max(0, games - estimated_games_done)
+                    log(f"iter {iteration} Phase A resuming: "
+                        f"{positions_so_far:,} positions ≈ {estimated_games_done:,} "
+                        f"games already done, running {games_remaining:,} more")
+                else:
+                    games_remaining = games
+
+                if games_remaining <= 0:
+                    log(f"iter {iteration} Phase A target already met "
+                        f"({positions_so_far:,} positions), skipping")
+                    sp_dur = 0.0
+                else:
+                    nns_log_path = os.path.join(LOGS_DIR,
+                                                f"nns_iter{iteration}.log")
+                    nns_proc, nns_log_f = start_nns(current_model,
+                                                    nns_log_path, log)
+                    try:
+                        wait_for_nns_ready(nns_proc, log)
+                        sp_dur = run_self_play(iteration, games_remaining,
+                                               trials, output_dir, log)
+                    finally:
+                        stop_nns(nns_proc, nns_log_f, log)
+
+                final_positions = positions_in_iteration(iteration, output_dir)
+                write_marker_atomic(
+                    marker_path_phase_a_done(iteration),
+                    f"target_games={games} positions_collected={final_positions} "
+                    f"timestamp={time.strftime('%Y-%m-%dT%H:%M:%S')}\n",
+                )
+
             train_dur = run_training(iteration, current_model,
                                      next_model, batches, log)
+
+            write_marker_atomic(
+                marker_path_done(iteration),
+                f"model={next_model} "
+                f"timestamp={time.strftime('%Y-%m-%dT%H:%M:%S')}\n",
+            )
 
             iter_dur = time.time() - iter_start
             log(f"--- iter {iteration} done: self-play {sp_dur:.0f}s, "

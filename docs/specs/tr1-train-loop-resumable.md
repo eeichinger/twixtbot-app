@@ -1,8 +1,8 @@
 # TR1 — Resumable train_loop.py
 
-**Status:** Pending
+**Status:** Done — implementation in `train_loop.py`, unit tests in `tests/test_train_loop.py`.
 **Priority:** P1
-**Files affected:** `train_loop.py` only (~40 lines added). No changes to
+**Files affected:** `train_loop.py` only (~50 lines added). No changes to
 `battle.py`, `train.py`, or `pmany.py`.
 
 ---

@@ -203,7 +203,7 @@ workflow.
 
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
-| TR1 | Resumable `train_loop.py` (mid-iteration) | **P1** | Low | Pending | ~40 lines; spec in `docs/specs/tr1-train-loop-resumable.md`. Avoids re-running full 4–8 hour Phase A after every paused gaming session. |
+| TR1 | Resumable `train_loop.py` (mid-iteration) | **P1** | Low | **Done** | Spec: `docs/specs/tr1-train-loop-resumable.md`. Tests: `tests/test_train_loop.py`. Avoids re-running full 4–8 hour Phase A after every paused gaming session. |
 
 ---
 
@@ -213,19 +213,14 @@ All P1 features and most P2 features are shipped. Remaining work by category:
 
 ### No retraining needed
 
-1. **TR1** — Resumable `train_loop.py`. After `pause-self-play.sh` interrupts an
-   iteration, restarting must pick up mid-Phase-A instead of redoing 4–8 hours
-   of self-play. Filesystem markers + position counting from `.bin` files; no
-   external state. Spec: `docs/specs/tr1-train-loop-resumable.md`.
-
-2. **A3** — Tree reuse (4-ply + O(N²) fix). Strongest pure-algorithm gain available
+1. **A3** — Tree reuse (4-ply + O(N²) fix). Strongest pure-algorithm gain available
    without new model weights. Pair with A4 (cpuct tuning) and validate with a small
    arena (100 self-play games).
 
-3. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
+2. **L5** — Offline replay cache. Cache SGF text in localStorage after first fetch;
    low effort, high reliability payoff.
 
-4. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
+3. **V6** — MCTS best-line visualization. Stream principal variation in `ping` messages
    from the worker; draw as an arrow chain on the board canvas. High effort.
 
 ### Requires retraining
