@@ -246,6 +246,10 @@ class ServerSocketProcess(multiprocessing.Process):
             assert len(msg_ints) == 2+desire
             outdata = b''.join([IntPacker.pack(n) for n in msg_ints])
             for slot in alloc_slots:
+                # Reset stale shmem status before handing the slot to a new client
+                # so send_out_replies() never raises a spurious notification on it.
+                x, y = self.slot_locations(slot)
+                self.shmem[y-2:y] = ANSWER_SENT
                 self.slot_user[slot] = sock
 
             sock.send(outdata)
@@ -268,6 +272,10 @@ class ServerSocketProcess(multiprocessing.Process):
         self.all_sockets.remove(sock)
         my_slots = [slot for slot, user in self.slot_user.items() if user == sock]
         for slot in my_slots:
+            # Reset stale shmem status (e.g. an unclaimed REPLY_AVAILABLE) so the
+            # next owner of this slot can't be notified for a query they never sent.
+            x, y = self.slot_locations(slot)
+            self.shmem[y-2:y] = ANSWER_SENT
             self.unused_slots.append(slot)
             del self.slot_user[slot]
 
