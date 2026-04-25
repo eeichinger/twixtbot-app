@@ -770,7 +770,7 @@ NNS prints a milestone stats block every `--milestone_step` positions. The
 `gpu:` line is the one that matters for throughput. Example from a real run:
 
 ```
-gpu: N=4110 T=358.384 W=500303 W/N=121.7 avg=0.015033 + 0.000593*W a/b=25.4
+gpu: N=4110 T=358.384 W=500303 W/N=121.7 W/T=1396/s avg=0.015033 + 0.000593*W a/b=25.4
 ```
 
 Two ways to compute throughput from this. Both give the same answer for the
@@ -786,7 +786,8 @@ positions / second = W / T = 500303 / 358.384 = 1395.8 pos/s
 ```
 
 That's the actual throughput observed during the run. No model, no math
-beyond division.
+beyond division. This value is also printed directly as `W/T=1396/s` in the
+milestone output, so usually you don't need to compute it yourself.
 
 ### Method 2 (modeled): plug observed batch size into the regression
 
