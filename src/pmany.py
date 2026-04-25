@@ -3,6 +3,7 @@ import argparse
 from collections import namedtuple
 import datetime
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -42,6 +43,33 @@ os.close(0)
 ProcInfo = namedtuple('ProcInfo', ['p', 'id', 'fileobj'])
 procmap = dict()
 
+# When pmany itself receives SIGINT/SIGTERM (Ctrl-C, pkill, parent's
+# Popen.terminate), Python would normally exit immediately and leave the
+# child instances orphaned — they'd keep running until they error out on
+# their own. Forward the signal to every live child so they exit too.
+# The main wait loop reaps them as they go.
+_shutdown_requested = False
+
+
+def shutdown_children(sig, frame):
+    global _shutdown_requested
+    _shutdown_requested = True
+    print(when(), "received signal %d; terminating %d child instance(s)" % (
+        sig, len(procmap)))
+    sys.stdout.flush()
+    # Snapshot the values: the main loop may delete entries from procmap
+    # between the bytecodes that drive this iteration.
+    for proc in list(procmap.values()):
+        try:
+            proc.p.terminate()
+        except Exception as e:
+            print(when(), "  could not terminate id=%d: %s" % (proc.id, e))
+    sys.stdout.flush()
+
+
+signal.signal(signal.SIGINT, shutdown_children)
+signal.signal(signal.SIGTERM, shutdown_children)
+
 _start_time = time.time()
 _last_progress = _start_time
 _PROGRESS_INTERVAL = 60
@@ -49,6 +77,11 @@ _total = args.num_clones
 _completed = 0
 
 for i in range(args.num_clones):
+    if _shutdown_requested:
+        print(when(), "shutdown requested; not spawning instances %d-%d" % (
+            i, args.num_clones - 1))
+        sys.stdout.flush()
+        break
     print(when(), "start instance #%d" % i)
     sys.stdout.flush()
     name = "%0*d" % (num_digits, i)
