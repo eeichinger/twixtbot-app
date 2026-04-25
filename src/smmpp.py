@@ -2,6 +2,7 @@
 """ Shared Memory Message Passing Protocol """
 # python
 import argparse
+import atexit
 import collections
 import mmap
 import multiprocessing
@@ -12,6 +13,13 @@ import socket
 import struct
 import sys
 import time
+
+
+def _unlink_quiet(path):
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
 
 debug = False
 
@@ -195,6 +203,10 @@ class ServerSocketProcess(multiprocessing.Process):
         self.main_socket.bind(self.socket_name)
         self.main_socket.listen(128)
 
+        # close()'ing a Unix socket leaves the filesystem entry behind;
+        # ensure it is unlinked whenever this process exits cleanly.
+        atexit.register(_unlink_quiet, self.socket_name)
+
         self.all_sockets = [self.main_socket, self.notify_pipe]
         print("Ready for connections on", self.socket_name)
         sys.stdout.flush()
@@ -346,6 +358,9 @@ class Server:
         self.shmem_file.seek(0, 0)
 
         self.shmem = mmap.mmap(self.shmem_file.fileno(), 0)
+
+        # Same as the socket file: ensure the shmem backing is removed on exit.
+        atexit.register(_unlink_quiet, self.shmem_name)
 
 
     def _init_timers(self):
