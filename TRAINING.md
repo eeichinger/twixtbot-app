@@ -391,6 +391,8 @@ win-rate percentages per player spec.
 **Interpreting results:**
 - Win-rate > 55% at n=200 is a meaningful improvement (±7% margin at p=0.05).
 - Win-rate > 60% at n=400 is a strong signal to promote the new model.
+- A flat ~50/50 result is *not* automatically "training failed" — see
+  **Appendix E** for the diagnostic checklist before drawing that conclusion.
 
 
 ### Step 3 — Stop the servers
@@ -855,3 +857,146 @@ Two quick rules of thumb:
 - **Are batches big enough?** Compare `W/N` to `a/b`. Example: 121.7 vs 25.4
   → batches are ~5× the crossover, so well-batched.
 - **Real throughput?** Just `W / T`. You don't need the regression for that.
+
+---
+
+## Appendix E — Assessing training progress (diagnosing flat arena results)
+
+When a freshly-trained model goes head-to-head with its predecessor and the
+arena returns ~50% wins for each side, the natural reaction is "training did
+nothing." That conclusion is often wrong. This appendix is a diagnostic guide
+for what to check before deciding whether the training pipeline failed,
+whether the arena setup hid the improvement, or whether you genuinely need
+more iterations.
+
+### Why a flat result can be misleading
+
+400 games is statistically informative — the 95% confidence interval on a
+50/50 result is roughly ±5%. So the *measurement* is precise. But what that
+measurement *means* depends critically on the `trials=N` setting in
+`battle.py`'s asn_player spec.
+
+At `trials=50`, MCTS does very little search relative to the network's raw
+policy. The arena is essentially measuring "which network's untreated policy
+is better." Several effects compete:
+
+- Network differences get **amplified** if the new policy is meaningfully
+  different — a few extra rollouts won't matter, the policy itself decides.
+- Search **can't rescue** an improved network whose advantage only manifests
+  in positions that need 200+ rollouts to evaluate correctly.
+- At low trials, search noise is high enough that small but real strength
+  differences can be drowned out.
+
+So a 50/50 at `trials=50` can mean:
+1. v(N) and v(N+1) really are equal strength — training had no effect.
+2. v(N+1) is better but its advantage only shows up at higher search depth.
+3. The networks differ but in symmetric ways that cancel at low trials.
+
+The reference Part B workflow specifies **`trials=400`** for arena exactly
+to avoid this ambiguity. If you ran a quick smoke arena at `trials=50` (as
+recommended for the Mac in Appendix C), the 50/50 result is **not yet** a
+strong signal of training failure. It's a preliminary indicator that warrants
+a proper-trials follow-up before drawing conclusions.
+
+### Diagnostic checklist (in order of effort)
+
+Run through these before concluding training failed. The order is roughly
+cheapest-first.
+
+#### 1. Are the two model files actually different?
+
+```bash
+md5sum models/v2.pt models/v3.pt
+```
+
+If the hashes match, you're playing the same model against itself. Common
+ways this happens: forgetting to run training, training crashing silently,
+or copying the wrong source file when staging the new arena.
+
+#### 2. Did the training loss actually decrease?
+
+Look at the log output from the `train.py` step that produced the new model.
+The expected pattern is total loss trending downward over the training
+epochs (with normal short-term wobble). If loss is flat from start to end,
+the network never learned anything from the self-play data — and 50/50 in
+the arena is the correct outcome. The fix is in training, not arena: check
+learning rate, batch size, optimizer settings, or whether the self-play
+data file was loaded at all.
+
+#### 3. Re-run a smaller arena at the canonical trials count
+
+Even 50 games at `trials=400` (≈ 1 hour on the 5070 Ti, longer on Mac) is
+much more diagnostic than 400 games at `trials=50`:
+
+- Win rate ≥ 60% for the new model → training worked, low-trials arena was
+  hiding the improvement. Promote the new model and continue.
+- Win rate still ~50% at `trials=400` → the result is genuinely flat;
+  proceed to checks 4 and 5.
+
+This is the single most-informative step. Do it before concluding training
+failed.
+
+#### 4. Eyeball a few games
+
+Either run `battle.py --show_moves` interactively, or save the games via the
+`--training_file` mechanism and inspect with `python src/one.py` or by
+loading positions in the webapp. Quick sanity checks:
+
+- **Move counts:** typical TwixT games end in 20-60 moves. If games end in
+  <10 moves or run to the board limit, something structural is broken
+  (e.g., one side resigning immediately, the network outputting NaNs, or
+  an MCTS bug producing illegal moves).
+- **Move quality:** are the moves recognizably reasonable to a human, or
+  do you see obvious blunders the same way both models? Both-blunder
+  patterns suggest a shared training-data issue rather than a real
+  comparison.
+- **Resignations:** if both sides resign rapidly in symmetric positions,
+  the resign threshold may be too aggressive — see Part A on resign tuning.
+
+#### 5. Check self-play data quality and quantity
+
+How many self-play games went into the new model? At what `trials` count?
+Reference workflow guidelines:
+
+- **Self-play trials matter more than arena trials** for training signal
+  quality. Rough rule: arena trials should be ≥ 4× self-play trials,
+  because arena is judging not generating. Self-play at trials=50 produces
+  noisy training targets; the resulting network has no clean policy to
+  learn from.
+- **Volume matters.** A single iteration with a few thousand self-play
+  games is rarely enough to show measurable arena improvement, especially
+  early in training. The reference workflow runs many iterations.
+- **Hyperparameter consistency.** If the v2→v3 step used different
+  Dirichlet noise, temperature schedule, or exploration constant from
+  earlier iterations, comparing them directly may not be apples-to-apples.
+
+### What "no improvement in one iteration" really means
+
+AlphaZero-style self-play improvement is famously **slow per iteration at
+the start**. The original AlphaGo Zero paper showed flat measured
+performance for several iterations before progress kicked in. Plateaus
+between checkpoints are normal — what matters is the trend across many
+iterations, not a single comparison.
+
+Practical rule: don't conclude "training is broken" from a single arena
+plateau. Conclude it from:
+- Multiple consecutive iterations all returning ~50% in proper-trials arena, **and**
+- Training loss not decreasing across those iterations, **or**
+- Self-play game quality visibly stagnant or regressing.
+
+If only one of those signals fires, you're more likely looking at a slow
+iteration than a broken pipeline.
+
+### Recommended order of operations when arena is flat
+
+1. `md5sum` the model files. (Seconds — rules out the dumbest mistake.)
+2. Check training loss curve from the offending training step. (Minutes.)
+3. Run a `trials=400, num_games=50-100` arena on the PC. (~1-2 hours.)
+4. If still flat: inspect a handful of games for sanity. (Hour.)
+5. If still flat: investigate self-play data quality and run at least one
+   more training iteration before deciding the pipeline needs a real
+   overhaul. (Days.)
+
+Each step is cheap relative to the next, and each one resolves a different
+class of root cause. Skipping ahead — e.g. immediately blaming the model
+architecture — usually wastes more time than it saves.
