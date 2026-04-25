@@ -185,9 +185,6 @@ def launch_clone(args, num_games, spec_a, spec_b, log_path):
 
 _AFTER_LINE = re.compile(r'After (\d+)/\d+ games?')
 _SCORE_LINE = re.compile(r'^:\s+([\d.]+)\s+\(\s*[\d.]+%\)\s+(.+)\s*$')
-_GPU_LINE = re.compile(
-    r'gpu:\s+N=\d+\s+T=[\d.]+\s+W=[\d.eE+-]+\s+W/N=([\d.]+)\s+W/T=(\d+)/s'
-)
 
 
 class CloneState:
@@ -226,19 +223,20 @@ class CloneState:
                     self.score_b = score
 
 
-def latest_gpu_summary(log_path):
-    """Return (W/N, W/T) tuple from the latest gpu: line, or None."""
+_GPU_RAW_LINE = re.compile(r'^gpu:\s+.*$', re.MULTILINE)
+
+
+def latest_gpu_line(log_path):
+    """Return the raw text of the latest gpu: line from an NNS log, or None."""
     try:
         with open(log_path) as f:
             content = f.read()
     except FileNotFoundError:
         return None
     last = None
-    for m in _GPU_LINE.finditer(content):
+    for m in _GPU_RAW_LINE.finditer(content):
         last = m
-    if last is None:
-        return None
-    return float(last.group(1)), int(last.group(2))
+    return last.group(0).strip() if last else None
 
 
 # ---------------------------------------------------------------------------
@@ -281,14 +279,12 @@ def print_status(args, states, nns_a_log, nns_b_log, total_games, elapsed):
     print(f"  : {score_b:6.1f} ({pct_b:5.1f}%) model-b ({args.model_b})")
     print(f"  CPU: {cpu_pct:5.1f}% of {n_cores} cores")
 
-    a_summary = latest_gpu_summary(nns_a_log)
-    b_summary = latest_gpu_summary(nns_b_log)
-    if a_summary:
-        wn, wt = a_summary
-        print(f"  NNS-A ({args.model_a.stem}): {wt} pos/s @ batch {wn:.0f}")
-    if b_summary:
-        wn, wt = b_summary
-        print(f"  NNS-B ({args.model_b.stem}): {wt} pos/s @ batch {wn:.0f}")
+    a_line = latest_gpu_line(nns_a_log)
+    b_line = latest_gpu_line(nns_b_log)
+    if a_line:
+        print(f"  NNS-A ({args.model_a.stem}): {a_line}")
+    if b_line:
+        print(f"  NNS-B ({args.model_b.stem}): {b_line}")
     sys.stdout.flush()
 
 
@@ -313,14 +309,12 @@ def build_summary(args, states, nns_a_log, nns_b_log, total_elapsed):
     lines.append(f"  model-b ({args.model_b}):  {score_b:6.1f} wins  "
                  f"({pct_b:5.1f}%)")
     lines.append("=" * 64)
-    a_summary = latest_gpu_summary(nns_a_log)
-    b_summary = latest_gpu_summary(nns_b_log)
-    if a_summary:
-        wn, wt = a_summary
-        lines.append(f"NNS-A ({args.model_a.stem}) final: {wt} pos/s @ batch {wn:.0f}")
-    if b_summary:
-        wn, wt = b_summary
-        lines.append(f"NNS-B ({args.model_b.stem}) final: {wt} pos/s @ batch {wn:.0f}")
+    a_line = latest_gpu_line(nns_a_log)
+    b_line = latest_gpu_line(nns_b_log)
+    if a_line:
+        lines.append(f"NNS-A ({args.model_a.stem}) final: {a_line}")
+    if b_line:
+        lines.append(f"NNS-B ({args.model_b.stem}) final: {b_line}")
     return lines
 
 
@@ -458,7 +452,8 @@ def main():
     print()
     for line in summary_lines:
         print(line)
-    summary_path = args.log_dir / "summary.txt"
+    summary_name = f"arena_summary_{args.model_a.stem}-vs-{args.model_b.stem}.txt"
+    summary_path = args.log_dir / summary_name
     write_summary_file(args, summary_lines, summary_path)
     print(f"\nsummary written to {summary_path}")
     sys.exit(1 if interrupted or failed else 0)
