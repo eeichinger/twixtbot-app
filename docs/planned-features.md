@@ -4,7 +4,7 @@ Consolidated from `docs/improvements.md`, `docs/lg-planned-features.md`,
 `docs/network-pvp-research.md`, and a feature comparison against
 `github.com/eeichinger/twixtbot-ui` (the desktop Python app).
 
-Last updated: 2026-04-25 (added TR1 — resumable train_loop).
+Last updated: 2026-04-25 (added TR1 — resumable train_loop; TR2 — live progress stats).
 
 ---
 
@@ -204,6 +204,7 @@ workflow.
 | ID | Feature | Priority | Effort | Status | Notes |
 |----|---------|----------|--------|--------|-------|
 | TR1 | Resumable `train_loop.py` (mid-iteration) | **P1** | Low | **Done** | Spec: `docs/specs/tr1-train-loop-resumable.md`. Tests: `tests/test_train_loop.py`. Avoids re-running full 4–8 hour Phase A after every paused gaming session. |
+| TR2 | Live progress stats during `train_loop.py` self-play | P2 | Low | **Done** | Spec: `docs/specs/tr2-train-loop-progress-stats.md`. Tests: `tests/test_progress_stats.py`. Same `[elapsed \| games \| games/min \| ETA]` block arena.py uses; helpers extracted to `src/progress_stats.py`. |
 
 ---
 

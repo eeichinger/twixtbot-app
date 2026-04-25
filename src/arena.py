@@ -28,6 +28,8 @@ try:
 except ImportError:
     sys.exit("arena.py requires psutil. Install with:  pip install psutil")
 
+from progress_stats import CloneLogTail, fmt_hms, latest_gpu_line
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 NNS_PY = SCRIPT_DIR / "nns.py"
@@ -183,70 +185,37 @@ def launch_clone(args, num_games, spec_a, spec_b, log_path):
     return p, f
 
 
-_AFTER_LINE = re.compile(r'After (\d+)/\d+ games?')
 _SCORE_LINE = re.compile(r'^:\s+([\d.]+)\s+\(\s*[\d.]+%\)\s+(.+)\s*$')
 
 
-class CloneState:
+class CloneState(CloneLogTail):
+    """Arena-specific clone tail: also extracts per-side scores from
+    `:  N.N (PP.P%) <player_spec>` lines and routes them to score_a /
+    score_b by matching the socket path inside the player spec."""
+
     def __init__(self, clone_id, log_path, expected_games, socket_a, socket_b):
+        super().__init__(log_path)
         self.clone_id = clone_id
-        self.log_path = log_path
         self.expected_games = expected_games
         self.socket_a = socket_a
         self.socket_b = socket_b
-        self.byte_offset = 0
-        self.games_done = 0
         self.score_a = 0.0
         self.score_b = 0.0
 
-    def update(self):
-        try:
-            with open(self.log_path, "rb") as f:
-                f.seek(self.byte_offset)
-                new = f.read()
-                self.byte_offset = f.tell()
-        except FileNotFoundError:
-            return
-        for raw in new.splitlines():
-            line = raw.decode("utf-8", errors="replace")
-            m = _AFTER_LINE.search(line)
-            if m:
-                self.games_done = max(self.games_done, int(m.group(1)))
-                continue
-            m = _SCORE_LINE.match(line)
-            if m:
-                score = float(m.group(1))
-                spec = m.group(2)
-                if self.socket_a in spec:
-                    self.score_a = score
-                elif self.socket_b in spec:
-                    self.score_b = score
-
-
-_GPU_RAW_LINE = re.compile(r'^gpu:\s+.*$', re.MULTILINE)
-
-
-def latest_gpu_line(log_path):
-    """Return the raw text of the latest gpu: line from an NNS log, or None."""
-    try:
-        with open(log_path) as f:
-            content = f.read()
-    except FileNotFoundError:
-        return None
-    last = None
-    for m in _GPU_RAW_LINE.finditer(content):
-        last = m
-    return last.group(0).strip() if last else None
+    def _handle_line(self, line):
+        m = _SCORE_LINE.match(line)
+        if m:
+            score = float(m.group(1))
+            spec = m.group(2)
+            if self.socket_a in spec:
+                self.score_a = score
+            elif self.socket_b in spec:
+                self.score_b = score
 
 
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
-
-def fmt_hms(seconds):
-    s = max(0, int(seconds))
-    return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
-
 
 def confidence_interval_pct(wins, total):
     """95% CI half-width on win rate, expressed as percentage points."""

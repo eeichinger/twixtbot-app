@@ -32,6 +32,15 @@ import subprocess
 import sys
 import time
 
+# Live progress helpers shared with arena.py.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+from progress_stats import CloneLogTail, fmt_hms, latest_gpu_line  # noqa: E402
+
+try:
+    import psutil
+except ImportError:
+    psutil = None  # CPU% will be omitted from the heartbeat block
+
 
 # =============================================================================
 # Configuration — edit these constants for experiments
@@ -336,10 +345,53 @@ def stop_nns(nns_proc, nns_log_f, log):
 # Phase A — self-play
 # =============================================================================
 
+def _discover_clone_logs(sp_log_dir):
+    """Per-clone log file paths under sp_log_dir (excluding master.log)."""
+    if not os.path.isdir(sp_log_dir):
+        return []
+    return sorted(
+        os.path.join(sp_log_dir, f)
+        for f in os.listdir(sp_log_dir)
+        if f.endswith('.log') and f != 'master.log'
+    )
+
+
+def _refresh_clone_tails(sp_log_dir, clones):
+    """Discover any new clone log files and update() all known tails."""
+    existing = {c.log_path for c in clones}
+    for path in _discover_clone_logs(sp_log_dir):
+        if path not in existing:
+            clones.append(CloneLogTail(path))
+    for c in clones:
+        c.update()
+
+
+def _emit_self_play_heartbeat(iteration, total_planned, sp_log_dir,
+                              nns_log_path, phase_start, clones, log):
+    _refresh_clone_tails(sp_log_dir, clones)
+    games_done = sum(c.games_done for c in clones)
+    elapsed = time.time() - phase_start
+    pct = 100.0 * games_done / total_planned if total_planned else 0
+    gpm = games_done * 60 / elapsed if elapsed > 0 else 0
+    eta = (elapsed * (total_planned - games_done) / games_done
+           if games_done > 0 else 0)
+    log(f"[elapsed {fmt_hms(elapsed)} | iter {iteration} self-play | "
+        f"{games_done:,}/{total_planned:,} games ({pct:.0f}%) | "
+        f"{gpm:.1f} games/min | ETA {fmt_hms(eta)}]")
+    if psutil is not None:
+        cpu_pct = psutil.cpu_percent(interval=None)
+        n_cores = psutil.cpu_count(logical=True) or 1
+        log(f"  CPU: {cpu_pct:.1f}% of {n_cores} cores")
+    nns_line = latest_gpu_line(nns_log_path)
+    if nns_line:
+        log(f"  NNS: {nns_line}")
+
+
 def run_self_play(iteration, games_target, trials, output_dir, log):
     sp_log_dir = os.path.join(LOGS_DIR, f"sp_iter{iteration}")
     if os.path.isdir(sp_log_dir):
         shutil.rmtree(sp_log_dir)
+    nns_log_path = os.path.join(LOGS_DIR, f"nns_iter{iteration}.log")
 
     games_per_clone = max(1, games_target // NUM_CLONES)
     total_planned = games_per_clone * NUM_CLONES
@@ -368,18 +420,20 @@ def run_self_play(iteration, games_target, trials, output_dir, log):
     log(f"pmany cmd: {' '.join(cmd)}")
 
     phase_start = time.time()
-    # pmany redirects its own stdout to its master.log, so we inherit ours and
-    # drive the heartbeat from here.
+    # pmany redirects its own stdout to its master.log; we drive the
+    # heartbeat from here by tailing per-clone logs and the NNS log.
     p = subprocess.Popen(cmd)
+    clones = []
+    if psutil is not None:
+        psutil.cpu_percent(interval=None)  # warm-up the per-process sampler
     last_hb = phase_start
     try:
         while p.poll() is None:
             time.sleep(5)
             now = time.time()
             if now - last_hb >= SELF_PLAY_HEARTBEAT_SEC:
-                elapsed = now - phase_start
-                log(f"self-play running... elapsed {elapsed:.0f}s "
-                    f"({elapsed/60:.1f} min); tail {sp_log_dir}/master.log for detail")
+                _emit_self_play_heartbeat(iteration, total_planned, sp_log_dir,
+                                          nns_log_path, phase_start, clones, log)
                 last_hb = now
     except KeyboardInterrupt:
         log("KeyboardInterrupt: terminating pmany")
@@ -395,6 +449,19 @@ def run_self_play(iteration, games_target, trials, output_dir, log):
         raise RuntimeError(f"pmany failed with exit code {p.returncode}")
     log(f"self-play done in {duration:.0f}s ({duration/60:.1f} min) "
         f"for iter {iteration}")
+
+    # Enriched post-Phase-A summary: total positions, real avg moves/game from
+    # the actual game count summed across clones, and the final NNS gpu line.
+    _refresh_clone_tails(sp_log_dir, clones)
+    actual_games = sum(c.games_done for c in clones)
+    positions = positions_in_iteration(iteration, output_dir)
+    if actual_games > 0 and positions > 0:
+        avg_mpg = positions / actual_games
+        log(f"  positions: {positions:,} "
+            f"(avg {avg_mpg:.0f} moves/game across {actual_games:,} games)")
+    nns_final = latest_gpu_line(nns_log_path)
+    if nns_final:
+        log(f"  NNS final: {nns_final}")
     return duration
 
 
