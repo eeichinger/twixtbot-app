@@ -617,3 +617,241 @@ than a CPU upgrade.
   costs 10–15% CPU under WSL2.
 - Set Windows power plan to **Best Performance** during training runs.
 - Close Chrome/Edge — background timers degrade 3D V-Cache hit rates.
+
+---
+
+## Appendix C — Running on Apple Silicon (Mac)
+
+The full training/arena pipeline runs on Apple M1/M2/M3 Macs using the **MPS**
+backend (Metal Performance Shaders). Intended use case: small-scale iteration,
+sanity checks, and running the arena locally against a candidate model while
+the 5070 Ti PC is busy with self-play. For serious training volume, SSH into
+the PC — the Mac is 5–10× slower on this workload.
+
+### Prerequisites
+
+- Python 3.11 (the repo's `requirements.txt` targets 3.11). Newer minor
+  versions (3.12+) may also work; Python 3.14 will not — `tensorflow` has no
+  wheels, blocking `tools/convert_tf1_to_pt.py`. Install via Homebrew:
+  ```bash
+  brew install python@3.11
+  /opt/homebrew/bin/python3.11 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+- PyTorch with MPS support ships in the standard `torch` wheel — no extra
+  install needed.
+- `tools/convert_tf1_to_pt.py` additionally needs TensorFlow. On macOS the
+  package is `tensorflow` (not `tensorflow-cpu`, which is Linux-only) — a
+  one-off `pip install tensorflow` in the venv is enough.
+
+### Device selection
+
+Use `--device mps`. The MPS backend is **5-8× faster than CPU** for this
+model; use CPU only as a correctness fallback when diagnosing MPS issues.
+
+```bash
+# Fast (MPS)
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
+  --model models/v3.pt --capacity 1024 --compile
+
+# Slow fallback (CPU) — only if MPS has a known problem
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device cpu \
+  --model models/v3.pt --capacity 1024
+```
+
+`--fp16` has no effect on MPS (disabled for CPU too; see `src/nneval.py:34`).
+Leave it off.
+
+### `--compile` on MPS
+
+When `--compile` is passed, `NNEvaluater` automatically uses
+`torch.compile(..., dynamic=True)` on MPS. This is important: without
+`dynamic=True`, Inductor recompiles for every new batch size, inflating
+per-call overhead 3× (see measurements below). On CUDA, shape specialization
+is the right default and `dynamic=False` stays active.
+
+Net effect of `--compile` on MPS at steady state:
+- `a` (fixed per-call overhead): 21.7 ms → **15.0 ms** (−30%)
+- `b` (per-example cost): 0.457 ms → 0.593 ms (+30%)
+- Breakeven batch: ~100 positions. At observed batch sizes 70-130, a 3-5%
+  throughput win.
+
+Small gain, but free once the flag is wired. Recommended on by default.
+
+### Arena on Mac
+
+Two NNS servers on different socket paths, then `pmany` with 8 clones:
+
+```bash
+# Terminal A
+python src/nns.py --location /tmp/twixtbot_nns_v2 --device mps \
+  --model models/v2.pt --capacity 1024 --compile
+
+# Terminal B
+python src/nns.py --location /tmp/twixtbot_nns_v3 --device mps \
+  --model models/v3.pt --capacity 1024 --compile
+
+# Terminal C — run the arena
+rm -rf logs/arena && python src/pmany.py \
+  --num_clones 8 \
+  --log_dir logs/arena \
+  -- \
+  python src/battle.py \
+    --white "asn_player:location=/tmp/twixtbot_nns_v2,trials=50,async_calls=64" \
+    --black "asn_player:location=/tmp/twixtbot_nns_v3,trials=50,async_calls=64" \
+    --num_games 50 \
+    --threads 2
+```
+
+Notes on the parameters:
+- `trials=50` is reduced from the reference `trials=400` because MPS
+  throughput caps arena games-per-minute. Use 50–100 for quick smoke tests
+  on the Mac; run the real `trials=400` arena on the PC.
+- `async_calls=64` (up from the 32 default) lifts average batch size into
+  the 100-130 range — worth ~3% extra throughput over 32. Going higher
+  has diminishing returns on MPS (memory-bandwidth bound).
+- `--capacity 1024` per NNS is fine; both share unified memory.
+
+### Expected throughput
+
+Steady-state on M1/M2 with `--compile` and `async_calls=64`:
+
+| NNS GPU stats | value |
+|---|---|
+| `a` (fixed per batch) | ~15 ms |
+| `b` (per position) | ~0.6 ms |
+| `a/b` (crossover batch) | ~25 |
+| Typical `W/N` (actual batch) | 100-130 |
+| **Throughput** | **~1400 positions/sec** |
+
+For reference: the 5070 Ti with `--compile --fp16` processes ~10,000+
+positions/sec on the same model. If the Mac number looks far lower than
+1400 pos/s, check: (a) battery not on low-power mode, (b) nothing else
+saturating the GPU, (c) let it run 10+ minutes before reading stats —
+`torch.compile` warmup can take several minutes to fully amortize.
+
+### macOS-specific gotchas
+
+- **Multiprocessing start method** — `src/nns.py` relies on the `fork`
+  start method. macOS defaults to `spawn` since Python 3.8, which cannot
+  transport `mmap` objects to child processes. If you see
+  `TypeError: cannot pickle 'mmap.mmap' object`, set `fork` explicitly
+  at the top of `src/nns.py`:
+  ```python
+  import multiprocessing
+  multiprocessing.set_start_method('fork', force=True)
+  ```
+- **Socket accept backlog** — `src/smmpp.py` uses `listen(128)` which
+  matches macOS's `kern.somaxconn`. Earlier versions used `listen(5)`
+  which caused `Connection refused` under arena load on Mac. If rolling
+  back, keep the bump.
+- **Training on Mac** — `src/train.py` works on MPS but is not
+  throughput-competitive with the PC. Acceptable for debugging training
+  code; not for real iterations.
+
+### When to use the Mac vs the PC
+
+| Task | Where |
+|---|---|
+| Code iteration, debugging, unit tests | Mac |
+| Small arena smoke test (n=20-50, trials=50) | Mac |
+| Full arena evaluation (n=400, trials=400) | PC (5070 Ti) |
+| Self-play training | PC (5070 Ti) |
+| Model conversion + ONNX export + quantization | CI (Ubuntu) |
+
+See `docs/wsl2-ssh-setup.md` for the SSH workflow for offloading to the PC.
+
+---
+
+## Appendix D — How to calculate throughput from NNS GPU stats
+
+NNS prints a milestone stats block every `--milestone_step` positions. The
+`gpu:` line is the one that matters for throughput. Example from a real run:
+
+```
+gpu: N=4110 T=358.384 W=500303 W/N=121.7 W/T=1396/s avg=0.015033 + 0.000593*W a/b=25.4
+```
+
+Two ways to compute throughput from this. Both give the same answer for the
+run you measured. The simpler one is just division.
+
+### Method 1 (simple): direct ratio from raw counts
+
+The NNS counts every position evaluated (`W`) and every second spent in GPU
+forward passes (`T`):
+
+```
+positions / second = W / T = 500303 / 358.384 = 1395.8 pos/s
+```
+
+That's the actual throughput observed during the run. No model, no math
+beyond division. This value is also printed directly as `W/T=1396/s` in the
+milestone output, so usually you don't need to compute it yourself.
+
+### Method 2 (modeled): plug observed batch size into the regression
+
+The line `avg = 0.015033 + 0.000593*W` is a linear regression fit:
+
+```
+time_per_batch (seconds) = a + b · W
+                         = 0.015033 + 0.000593 · W
+```
+
+where `W` here is the batch size (number of positions in that one call). At
+the observed average batch size `W = 121.7`:
+
+```
+time_per_batch = 0.015033 + 0.000593 · 121.7
+               = 0.015033 + 0.072168
+               = 0.087201 s
+```
+
+That's the predicted time for one batch of 121.7 positions. Positions per
+second:
+
+```
+positions_per_second = batch_size / time_per_batch
+                     = 121.7 / 0.087201
+                     = 1395.4 pos/s
+```
+
+Same number (within rounding) as Method 1. They have to match — the
+regression is fit on the same data that produced `T` and `W`.
+
+### Why bother with Method 2?
+
+Because once you have `a` and `b`, you can predict throughput at batch sizes
+you didn't actually observe. That's the whole point of the regression.
+Examples:
+
+| hypothetical batch | predicted batch time | predicted pos/s |
+|---|---|---|
+| 32 | 0.015033 + 32·0.000593 = 0.0340 s | 941 |
+| 64 | 0.015033 + 64·0.000593 = 0.0530 s | 1208 |
+| **121.7 (observed)** | **0.0872 s** | **1395** |
+| 256 | 0.015033 + 256·0.000593 = 0.1668 s | 1535 |
+| 1000 | 0.015033 + 1000·0.000593 = 0.6080 s | 1645 |
+
+So the regression lets you answer "what if I could push batch sizes higher?"
+without actually running the experiment. The asymptote (very large W)
+approaches `1/b = 1/0.000593 ≈ 1686 pos/s` — that's the theoretical maximum
+throughput on this device, achievable only if you could amortize the fixed
+overhead `a` across infinite work.
+
+### Quick recap of the symbols
+
+| symbol | meaning |
+|---|---|
+| `N` | total batches (forward passes) so far |
+| `T` | total seconds in those forward passes |
+| `W` | total positions evaluated across all batches |
+| `W/N` | average batch size — what you actually ran at |
+| `a` | fixed per-batch overhead (kernel launch / dispatch); ~15 ms here |
+| `b` | per-position compute cost; ~0.6 ms here |
+| `a/b` | crossover batch — at this batch size, fixed cost = compute cost |
+
+Two quick rules of thumb:
+- **Are batches big enough?** Compare `W/N` to `a/b`. Example: 121.7 vs 25.4
+  → batches are ~5× the crossover, so well-batched.
+- **Real throughput?** Just `W / T`. You don't need the regression for that.

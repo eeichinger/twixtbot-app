@@ -64,8 +64,11 @@ class WorkTimeStat:
         N = self.total_count()
         T = self.total_time()
         W = self.total_work()
+        batch_str = " W/N=%.1f" % (W / N) if N > 0 else ""
+        rate_str = " W/T=%.0f/s" % (W / T) if T > 0 else ""
         try:
             betas = numpy.linalg.solve(self.XX, self.XY)
         except numpy.linalg.LinAlgError:
-            return "%s: N=%d T=%6g W=%8g  matrix error" % (self.name, N, T, W)
-        return "%s: N=%d T=%6g W=%8g avg=%.6f + %.6f*W" % (self.name, N, T, W, betas[0], betas[1])
+            return "%s: N=%d T=%6g W=%8g%s%s  matrix error" % (self.name, N, T, W, batch_str, rate_str)
+        ratio_str = " a/b=%.1f" % (betas[0] / betas[1]) if betas[1] > 1e-9 else ""
+        return "%s: N=%d T=%6g W=%8g%s%s avg=%.6f + %.6f*W%s" % (self.name, N, T, W, batch_str, rate_str, betas[0], betas[1], ratio_str)

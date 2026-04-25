@@ -6,10 +6,12 @@ import collections
 import mmap
 import multiprocessing
 import os
+import random
 import select
 import socket
 import struct
 import sys
+import time
 
 debug = False
 
@@ -39,7 +41,22 @@ class Client:
     def _init_socket(self, location):
         sock_name = location + ".sock"
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.socket.connect(sock_name)
+        # Retry on ECONNREFUSED: the server's accept backlog can saturate
+        # when many clones connect at once. Exponential backoff with jitter.
+        delay = 0.05
+        deadline = time.monotonic() + 10.0
+        attempt = 0
+        while True:
+            try:
+                self.socket.connect(sock_name)
+                return
+            except (ConnectionRefusedError, FileNotFoundError) as e:
+                attempt += 1
+                if time.monotonic() >= deadline:
+                    raise ConnectionRefusedError(
+                        f"could not connect to {sock_name} after {attempt} attempts: {e}")
+                time.sleep(delay + random.uniform(0, delay))
+                delay = min(delay * 2, 1.0)
 
     def _init_shmem(self, location):
         shmem_name = location + ".shm"
@@ -176,7 +193,7 @@ class ServerSocketProcess(multiprocessing.Process):
 
         self.main_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.main_socket.bind(self.socket_name)
-        self.main_socket.listen(5)
+        self.main_socket.listen(128)
 
         self.all_sockets = [self.main_socket, self.notify_pipe]
         print("Ready for connections on", self.socket_name)

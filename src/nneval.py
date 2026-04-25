@@ -39,7 +39,11 @@ class NNEvaluater:
             net = model_or_path
         self.model = net.eval().to(device)
         if compiled:
-            self.model = torch.compile(self.model, mode='default')
+            # MPS needs dynamic=True to avoid recompilation on every new
+            # batch size (tripled per-call overhead in measurements).
+            # CUDA benefits from shape specialization, so keep default there.
+            dynamic = str(device).startswith('mps')
+            self.model = torch.compile(self.model, mode='default', dynamic=dynamic)
 
     def pwin_size(self):
         """Return the number of value outputs — always 3 (Loss/Draw/Win)."""
@@ -85,7 +89,7 @@ class NNEvaluater:
 
         with torch.no_grad():
             if self.fp16:
-                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                with torch.autocast(device_type=self.device, dtype=torch.float16):
                     policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
             else:
                 policy_logits, value_logits = self.model(pegs_t, links_t, locs_t)
