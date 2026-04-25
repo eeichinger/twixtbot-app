@@ -292,7 +292,8 @@ def print_status(args, states, nns_a_log, nns_b_log, total_games, elapsed):
     sys.stdout.flush()
 
 
-def print_summary(args, states, nns_a_log, nns_b_log, total_elapsed):
+def build_summary(args, states, nns_a_log, nns_b_log, total_elapsed):
+    """Return the final summary as a list of lines."""
     score_a = sum(s.score_a for s in states)
     score_b = sum(s.score_b for s in states)
     games_done = sum(s.games_done for s in states)
@@ -302,22 +303,43 @@ def print_summary(args, states, nns_a_log, nns_b_log, total_elapsed):
     ci_a = confidence_interval_pct(score_a, played)
     gpm = (games_done / total_elapsed * 60) if total_elapsed > 0 else 0
 
-    print()
-    print("=" * 64)
-    print(f"Arena complete in {fmt_hms(total_elapsed)} — "
-          f"{games_done} games at {gpm:.1f} games/min")
-    print("-" * 64)
-    print(f"  model-a ({args.model_a}):  {score_a:6.1f} wins  ({pct_a:5.1f}%, ±{ci_a:.1f}%)")
-    print(f"  model-b ({args.model_b}):  {score_b:6.1f} wins  ({pct_b:5.1f}%)")
-    print("=" * 64)
+    lines = []
+    lines.append("=" * 64)
+    lines.append(f"Arena complete in {fmt_hms(total_elapsed)} — "
+                 f"{games_done} games at {gpm:.1f} games/min")
+    lines.append("-" * 64)
+    lines.append(f"  model-a ({args.model_a}):  {score_a:6.1f} wins  "
+                 f"({pct_a:5.1f}%, ±{ci_a:.1f}%)")
+    lines.append(f"  model-b ({args.model_b}):  {score_b:6.1f} wins  "
+                 f"({pct_b:5.1f}%)")
+    lines.append("=" * 64)
     a_summary = latest_gpu_summary(nns_a_log)
     b_summary = latest_gpu_summary(nns_b_log)
     if a_summary:
         wn, wt = a_summary
-        print(f"NNS-A ({args.model_a.stem}) final: {wt} pos/s @ batch {wn:.0f}")
+        lines.append(f"NNS-A ({args.model_a.stem}) final: {wt} pos/s @ batch {wn:.0f}")
     if b_summary:
         wn, wt = b_summary
-        print(f"NNS-B ({args.model_b.stem}) final: {wt} pos/s @ batch {wn:.0f}")
+        lines.append(f"NNS-B ({args.model_b.stem}) final: {wt} pos/s @ batch {wn:.0f}")
+    return lines
+
+
+def write_summary_file(args, summary_lines, summary_path):
+    """Write the summary to a file with run metadata header for archival."""
+    started = time.strftime("%Y-%m-%d %H:%M:%S %Z")
+    header = [
+        f"# arena.py summary — {started}",
+        f"# command: {' '.join(sys.argv)}",
+        f"# model-a: {args.model_a}",
+        f"# model-b: {args.model_b}",
+        f"# device={args.device}, total_games={args.total_games}, "
+        f"num_clones={args.num_clones}, trials={args.trials}, "
+        f"async_calls={args.async_calls}, threads={args.threads}, "
+        f"compile={args.compile}",
+        "",
+    ]
+    with open(summary_path, "w") as f:
+        f.write("\n".join(header + summary_lines) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -431,8 +453,14 @@ def main():
     if failed:
         print(f"\nwarning: {len(failed)} clone(s) exited with non-zero status: "
               f"{[i for _, i in failed]} — see {args.log_dir}")
-    print_summary(args, clone_states, nns_a_log, nns_b_log,
-                  time.monotonic() - start)
+    summary_lines = build_summary(args, clone_states, nns_a_log, nns_b_log,
+                                  time.monotonic() - start)
+    print()
+    for line in summary_lines:
+        print(line)
+    summary_path = args.log_dir / "summary.txt"
+    write_summary_file(args, summary_lines, summary_path)
+    print(f"\nsummary written to {summary_path}")
     sys.exit(1 if interrupted or failed else 0)
 
 
