@@ -439,7 +439,10 @@ def run_self_play(iteration, games_target, trials, output_dir, log):
         log("KeyboardInterrupt: terminating pmany")
         p.terminate()
         try:
-            p.wait(timeout=10)
+            # 30s is generous: pmany propagates SIGTERM to N battle clones
+            # which each tear down their NNS connections and flush training
+            # files. Better to wait than to kill -9 mid-flush.
+            p.wait(timeout=30)
         except subprocess.TimeoutExpired:
             p.kill()
         raise
@@ -501,7 +504,9 @@ def run_training(iteration, current_model, next_model, batches, log):
         log("KeyboardInterrupt: terminating train.py")
         p.terminate()
         try:
-            p.wait(timeout=10)
+            # 30s lets train.py finish the in-flight optimizer step and write
+            # the partial checkpoint instead of getting kill -9'd mid-batch.
+            p.wait(timeout=30)
         except subprocess.TimeoutExpired:
             p.kill()
         raise
