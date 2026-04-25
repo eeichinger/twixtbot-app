@@ -173,7 +173,10 @@ def unthreaded_run():
 
         pct = 100.0*scores[0]/(scores[0]+scores[1])
         elapsed = time.time() - start_time
-        print("%s After %d/%d game%s (%.0fs elapsed)..." % (when(), n+1, args.num_games, "" if n==0 else "s", elapsed))
+        pct_done = 100.0 * (n+1) / args.num_games
+        remaining = elapsed * (args.num_games - (n+1)) / (n+1)
+        print("%s After %d/%d game%s (%.0fs elapsed, %.0f%% completed, %.0fs remaining)..." % (
+            when(), n+1, args.num_games, "" if n==0 else "s", elapsed, pct_done, remaining))
         print(": %5.1f (%5.1f%%) %s" % (scores[0], pct, thinker[0].name))
         print(": %5.1f (%5.1f%%) %s" % (scores[1], 100-pct, thinker[1].name))
         sys.stdout.flush()
@@ -256,7 +259,10 @@ class ThreadingManager:
 
             pct = 100.0*scores[0]/(scores[0]+scores[1])
             elapsed = time.time() - self.start_time
-            print("%s After %d/%d game%s (%.0fs elapsed)..." % (when(), n+1, self.args.num_games, "" if n==0 else "s", elapsed))
+            pct_done = 100.0 * (n+1) / self.args.num_games
+            remaining = elapsed * (self.args.num_games - (n+1)) / (n+1)
+            print("%s After %d/%d game%s (%.0fs elapsed, %.0f%% completed, %.0fs remaining)..." % (
+                when(), n+1, self.args.num_games, "" if n==0 else "s", elapsed, pct_done, remaining))
             print(": %5.1f (%5.1f%%) %s" % (scores[0], pct, args.black))
             print(": %5.1f (%5.1f%%) %s" % (scores[1], 100-pct, args.white))
 
