@@ -141,31 +141,102 @@ effective dataset per actual self-play game with **no extra training
 cost** — same forward/backward pass, just a different augmentation
 sample. Worth following up as a small candidate experiment.
 
+## Side-thread: batch size choice (256 vs alternatives)
+
+Surfaced when re-reading `train.py`. Quick capture so it doesn't get
+lost.
+
+**What we have today.** `train.py:272` defaults `--batch_size=256`;
+`train_loop.py:70` uses the same. No detailed rationale in the
+codebase. Two short references hint that 256 was set conservatively:
+
+- `TRAINING.md:545` — "Increase to 512 if GPU VRAM allows."
+- `docs/further_training_improvements.md:50` — "current 256 leaves
+  VRAM headroom."
+
+**Two effects of changing batch size**:
+
+1. *Gradient noise.* Larger batch = lower-variance gradient per step,
+   but the noise itself is regularisation. Keskar et al. 2017 ("On
+   Large-Batch Training") showed too-large batches converge to "sharp
+   minima" that generalise worse. Effect grows with batch size; at
+   256 → 512 probably small, at 256 → 4096 noticeable.
+2. *Effective throughput.* GPU forward/backward at 2× batch is ≈
+   1.3-1.6× the wall time, so larger batch fits more samples per unit
+   compute. AlphaZero's 2048 reflects this — TPU pods made it cheap.
+
+**Confound: learning rate.** Goyal et al. 2017 linear scaling rule —
+scaling batch k× requires scaling LR k× for a fair comparison. Most
+"large batch hurts" results in the literature are confounded by LR
+mismatch.
+
+### Proposed experiment
+
+Cheap (≈ a few hours total) and cleanly informative. Three variants,
+all started from `v7.pt`, all training against the existing accumulated
+`spdata/`:
+
+| Variant | batch_size | num_batches | learning_rate | What it measures |
+|---|---|---|---|---|
+| **A** (control) | 256 | 2000 | 0.01 | reproduces v8 |
+| **B** (LR-scaled) | 512 | 1000 | 0.02 | same compute, scaled LR — "is batch size a lever at all?" |
+| **C** (more samples) | 512 | 2000 | 0.02 | 2× samples seen — "are we under-trained at the current cadence?" |
+
+Arena each pairwise at `trials=400, num_games≈100`:
+
+- **A vs B** is the headline question: at fixed compute, does scaled
+  larger batch help, hurt, or wash?
+- **A vs C** secondary: would more training help at all?
+
+Recommended: run A vs B first. If it washes, batch size isn't worth
+chasing further; move on. If B wins materially, consider larger
+batches still.
+
+### Mechanics
+
+Direct `train.py` invocation, bypass `train_loop.py` (no need for
+markers, NNS, etc. — Phase B only):
+
+```bash
+cp models/v7.pt models/v8_B.pt
+python src/train.py --model models/v8_B.pt --device cuda \
+  --num_batches 1000 --batch_size 512 --learning_rate 0.02 \
+  --decay_rate 0.95 --temperature 0.5 --policy_epsilon 0.01 \
+  --save_after 200 spdata/
+```
+
+Then arena with arena.py against the existing `models/v8.pt`.
+
 ## Where we left off
 
-Current behavior characterised. AlphaZero rationale documented. One
-concrete gap surfaced: **4-fold vs 8-fold symmetry augmentation** —
-we're missing reflections. The other differences (batch size, window
-shape, train:games ratio) are either hardware-bound or arguably
-better in our pipeline already.
+Current behavior characterised. AlphaZero rationale documented.
+**Two concrete experiment-ready gaps:**
+
+1. **4-fold → 8-fold symmetry augmentation** (rotations only today;
+   add reflections). Likely a 1-line edit in `sample_learning_state`
+   if naf.py reflection helpers exist. 2× effective dataset size for
+   free.
+2. **Batch size 256 → 512 with scaled LR**. Cheap A/B test described
+   in "Side-thread: batch size choice" above.
+
+The other AlphaZero differences (window shape, train:games ratio) are
+either hardware-bound or arguably better in our pipeline already.
 
 ## Next action
 
-Investigate the symmetry-augmentation gap concretely:
+Two candidate experiments, in order of cheapness:
 
-1. Confirm TwixT actually has 8-fold symmetry. Rotation by 0/90/180/270°
-   may swap which player is "vertical-connect" vs "horizontal-connect"
-   — the 90° rotations are colour-swapping, the 180° is not. Reflections
-   need similar care.
-2. Check `naf.py` for existing reflection helpers (the constants
-   `NUM_ROTATIONS = 4` and `HFLIP_BIT = 1` near line 458 suggest the
-   data layout already supports an 8-fold scheme even though
-   `sample_learning_state` only uses 4-fold).
-3. If the reflection helpers exist, the change is a 1-line edit in
-   `sample_learning_state` plus matching application to the policy
-   target. Train one iteration as a baseline; arena vs the
-   parent at proper trials count to confirm no regression.
+1. **Batch size A/B (Variant A vs B above).** Direct `train.py`
+   invocation, no orchestration needed. Total cost: ~3 min training +
+   1-2 hour arena. Decisive about whether 256 is a real bottleneck.
 
-Open: KataGo's curriculum sampling (sampling across older model
-windows beyond simple recency tiers). Defer; investigate after the
-augmentation gap is closed.
+2. **8-fold symmetry augmentation.** Verify `naf.py` reflection
+   helpers exist (constants `NUM_ROTATIONS = 4`, `HFLIP_BIT = 1` near
+   line 458 suggest yes). 1-line edit in `sample_learning_state` if
+   so. Same A-vs-B style arena to confirm no regression.
+
+Whichever runs first, capture the arena result in this file under a
+new "Findings" section before moving on.
+
+Open / deferred: KataGo's curriculum sampling across model windows;
+investigate after the cheap experiments close.
