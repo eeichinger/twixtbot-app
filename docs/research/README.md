@@ -15,7 +15,7 @@ off" / "Next action" sections rebuild the context fast.
 
 | File | Topic | Status | Cross-refs |
 |---|---|---|---|
-| [01-replay-buffer-sampling.md](01-replay-buffer-sampling.md) | Replay buffer + minibatch sampling vs full-pass training | scoped | (none yet) |
+| [01-replay-buffer-sampling.md](01-replay-buffer-sampling.md) | Replay buffer + minibatch sampling vs full-pass training | investigating | (none yet) |
 | [02-model-scaling.md](02-model-scaling.md) | Scaling depth / width / heads | scoped | B7, B5 in `improvements.md`; §5–5c in `further_training_improvements.md` |
 | [03-search-efficiency.md](03-search-efficiency.md) | Reducing trials per move (Gumbel AlphaZero, "QZero") | scoped | A4 (cpuct tuning) in `improvements.md` |
 | [04-global-board-features.md](04-global-board-features.md) | End-to-end connection awareness (KataGo-style global pooling) | scoped | **B9a** in `improvements.md`; §5b in `further_training_improvements.md` |
