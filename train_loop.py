@@ -116,9 +116,12 @@ SELF_PLAY_HEARTBEAT_SEC = 60           # how often to print "still running" duri
 # positions in iter{N}_*.bin (each LearningState record is fixed-size).
 # See docs/specs/tr1-train-loop-resumable.md.
 LEARNING_STATE_BYTES = 1789            # naf.LearningState.NUM_BYTES for board=24
-AVG_MOVES_PER_GAME = 410               # empirical mean across iters 4-6 (calibrated
-                                       # via show_bin_info.py); used only to estimate
-                                       # how many games are already done on resume
+AVG_MOVES_PER_GAME_DEFAULT = 410       # fallback when no prior iteration is on disk
+                                       # (e.g. resuming iter 1). Normally we estimate
+                                       # avg moves/game live from iter N-1's data, see
+                                       # estimate_avg_moves_per_game(). Calibrated from
+                                       # iters 4-6 (420/413/403); games shorten as the
+                                       # model gets more decisive (iter 8 was ~289).
 
 
 # =============================================================================
@@ -235,6 +238,53 @@ def positions_in_iteration(iteration, search_dir):
             size = os.path.getsize(os.path.join(search_dir, fname))
             total += size // LEARNING_STATE_BYTES
     return total
+
+
+def _spdata_search_dirs():
+    """All directories where iter{N}_*.bin files may live: flat root + weighted tiers."""
+    dirs = [SPDATA_DIR]
+    if USE_WEIGHTED_SAMPLING:
+        dirs.append(os.path.join(SPDATA_DIR, f"w={RECENT_WEIGHT}"))
+        dirs.append(os.path.join(SPDATA_DIR, f"w={OLDER_WEIGHT}"))
+    return dirs
+
+
+def positions_for_iteration_anywhere(iteration):
+    """Sum positions for iter{N} across flat-root + both weighted-tier dirs."""
+    return sum(positions_in_iteration(iteration, d) for d in _spdata_search_dirs())
+
+
+def planned_games_for_iteration(iteration):
+    """Number of games pmany actually targets for iter N (cadence rounded to NUM_CLONES)."""
+    games_target, _, _ = get_cadence(iteration)
+    games_per_clone = max(1, games_target // NUM_CLONES)
+    return games_per_clone * NUM_CLONES
+
+
+def estimate_avg_moves_per_game(iteration, log):
+    """Estimate avg moves/game for iter N's resume calculation.
+
+    Uses iter (N-1)'s on-disk data: avg ≈ positions(N-1) / planned_games(N-1).
+    Self-calibrating — game length drifts down as the model improves and a hard-coded
+    constant goes stale (iters 4-6 ≈ 410, iter 8 ≈ 289). Falls back to the default
+    when no prior-iter data is available (iter 1, or first run after a wipe).
+    """
+    if iteration <= 1:
+        return float(AVG_MOVES_PER_GAME_DEFAULT)
+
+    prev = iteration - 1
+    prev_positions = positions_for_iteration_anywhere(prev)
+    prev_planned = planned_games_for_iteration(prev)
+
+    if prev_positions <= 0 or prev_planned <= 0:
+        log(f"  no iter {prev} data on disk; using default "
+            f"avg moves/game = {AVG_MOVES_PER_GAME_DEFAULT}")
+        return float(AVG_MOVES_PER_GAME_DEFAULT)
+
+    avg = prev_positions / prev_planned
+    log(f"  iter {prev}: {prev_positions:,} positions / "
+        f"{prev_planned:,} planned games = {avg:.0f} avg moves/game (auto-calibrated)")
+    return avg
 
 
 def write_marker_atomic(path, content):
@@ -599,11 +649,13 @@ def main():
             else:
                 positions_so_far = positions_in_iteration(iteration, output_dir)
                 if positions_so_far > 0:
-                    estimated_games_done = positions_so_far // AVG_MOVES_PER_GAME
+                    avg_mpg = estimate_avg_moves_per_game(iteration, log)
+                    estimated_games_done = int(positions_so_far / avg_mpg)
                     games_remaining = max(0, games - estimated_games_done)
                     log(f"iter {iteration} Phase A resuming: "
-                        f"{positions_so_far:,} positions ≈ {estimated_games_done:,} "
-                        f"games already done, running {games_remaining:,} more")
+                        f"{positions_so_far:,} positions / {avg_mpg:.0f} avg "
+                        f"≈ {estimated_games_done:,} games already done, "
+                        f"running {games_remaining:,} more")
                 else:
                     games_remaining = games
 
