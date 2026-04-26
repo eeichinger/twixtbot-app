@@ -69,9 +69,10 @@ def choose_first_move():
 
     z = random.uniform(0, cum)
     i = bisect.bisect(locations, z)
-    if i == len(locations):
-        i -= 1
-    return points[i]
+    # bisect_right returns i in [1, len(locations)]; segment i corresponds to points[i-1].
+    if i > len(points):
+        i = len(points)
+    return points[i - 1]
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
