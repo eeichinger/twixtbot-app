@@ -360,8 +360,9 @@ class Player:
         if self.root == None:
             self.root = self._expand_leaf(None, None)
             self.history_at_root = list(self.game.history)
-            self._block_until_reply()
-            num_evals = 1
+            if self.leaves_waiting > 0:
+                self._block_until_reply()
+            self._process_finished_leaves()
 
         # Let's start thinkin'!
         request_block = False
