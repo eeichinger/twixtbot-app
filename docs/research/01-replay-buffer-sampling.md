@@ -131,15 +131,45 @@ sampling across model windows; not yet investigated here.
 | Window | Last 500K games (hard cutoff) | Last 3 iters at 0.8 + everything else at 0.2 (soft) |
 | Batch size | 2048 | 256 |
 | Train:games ratio | ~1:1 (continuous) | ~1:8 per iter (2000 × 256 vs 4M positions) |
-| Symmetry augmentation | **8-fold** (4 rotations × 2 reflections) | **4-fold** (rotations only) |
+| Symmetry augmentation | 8-fold (Go's D₄, all same-player) | 4-fold (D₂, full same-player set for our representation) |
 
-The only row that suggests a concrete cheap improvement is the last:
-`sample_learning_state` calls `r = random.randint(0, 3)` (`train.py:132`)
-and applies `nips.rotate(r)` + `rotate_policy_array(N, r)`. There's no
-horizontal/vertical reflection. Adding a reflection bit would 2× the
-effective dataset per actual self-play game with **no extra training
-cost** — same forward/backward pass, just a different augmentation
-sample. Worth following up as a small candidate experiment.
+(The previous version of this section claimed "4-fold rotations only,
+missing reflections" and proposed an easy 2× experiment. That was
+wrong — corrected below in "Augmentation correction".)
+
+## Augmentation correction (2026-04-26)
+
+Previous session claimed our 4-fold scheme was "rotations only, missing
+reflections" and that adding reflections would 2× the data. **Wrong on
+both counts.** Reading `naf.py` more carefully:
+
+- `NUM_ROTATIONS = 4`, `HFLIP_BIT = 1`, `VFLIP_BIT = 2`. `r ∈ {0..3}`
+  indexes a *bitmask* of {hflip, vflip}, not 4 rotation angles.
+  - `r=0` identity, `r=1` h-flip only, `r=2` v-flip only, `r=3` h+v
+    (= 180°). That's the full **Klein four-group D₂**.
+- The reason Go's 8-fold doesn't translate to TwixT: TwixT
+  **canonicalises player perspective at encoding time**.
+  `NetInputs.init_from_game_black` (`naf.py:49-59`) transposes the
+  board and swaps colours, so the network always sees a "white-to-move"
+  canonical view. The 4 D₄ elements that aren't in our 4-fold set are
+  the player-swapping ones (90°, 270°, transposes), and they're
+  already absorbed by this canonicalisation.
+
+**So we are not missing geometric augmentation.** D₂ is the right
+group for this representation; adding the player-swap elements would
+just produce already-existing black-to-move positions viewed from the
+other side — no new data.
+
+The "easy 2× data" experiment is dropped from candidate next-actions.
+
+(Side note: there's a subtle correctness check worth doing one day —
+the same `r` is applied to both the NetInputs board and the policy
+target via `hflip_policy_array`/`vflip_policy_array`, which assume the
+canonical white-to-move encoding. Looks consistent in the code I
+read, but the policy `hflip` flips the major axis of `(S-2, S)` reshape
+and the board `hflip` flips axis 0 of `(S, S, 11)` — these are only
+equivalent because of canonicalisation. Worth a directed test if we
+ever suspect off-by-one symmetry bugs. Not blocking.)
 
 ## Side-thread: batch size choice (256 vs alternatives)
 
@@ -210,33 +240,26 @@ Then arena with arena.py against the existing `models/v8.pt`.
 ## Where we left off
 
 Current behavior characterised. AlphaZero rationale documented.
-**Two concrete experiment-ready gaps:**
+Augmentation gap **disproved** — our 4-fold D₂ is correct given the
+white-to-move canonicalisation in `NetInputs.init_from_game_black`.
 
-1. **4-fold → 8-fold symmetry augmentation** (rotations only today;
-   add reflections). Likely a 1-line edit in `sample_learning_state`
-   if naf.py reflection helpers exist. 2× effective dataset size for
-   free.
-2. **Batch size 256 → 512 with scaled LR**. Cheap A/B test described
-   in "Side-thread: batch size choice" above.
+**One concrete experiment-ready candidate:**
+
+- **Batch size 256 → 512 with scaled LR**. Cheap A/B test described
+  in "Side-thread: batch size choice" above.
 
 The other AlphaZero differences (window shape, train:games ratio) are
 either hardware-bound or arguably better in our pipeline already.
 
 ## Next action
 
-Two candidate experiments, in order of cheapness:
+**Run the batch-size A/B (Variant A vs B above).** Direct `train.py`
+invocation, no orchestration needed. Total cost: ~3 min training +
+1-2 hour arena. Decisive about whether 256 is leaving training quality
+on the table at fixed compute.
 
-1. **Batch size A/B (Variant A vs B above).** Direct `train.py`
-   invocation, no orchestration needed. Total cost: ~3 min training +
-   1-2 hour arena. Decisive about whether 256 is a real bottleneck.
-
-2. **8-fold symmetry augmentation.** Verify `naf.py` reflection
-   helpers exist (constants `NUM_ROTATIONS = 4`, `HFLIP_BIT = 1` near
-   line 458 suggest yes). 1-line edit in `sample_learning_state` if
-   so. Same A-vs-B style arena to confirm no regression.
-
-Whichever runs first, capture the arena result in this file under a
-new "Findings" section before moving on.
+Capture the arena result in this file under a new "Findings" section
+before moving on.
 
 Open / deferred: KataGo's curriculum sampling across model windows;
 investigate after the cheap experiments close.

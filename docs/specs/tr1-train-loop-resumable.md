@@ -105,13 +105,11 @@ For each iteration `N` in `range(start_iter, total_iters + 1)`:
 ## New helpers in `train_loop.py`
 
 ```python
-LEARNING_STATE_BYTES = 1789  # naf.LearningState.NUM_BYTES; hardcoded for resilience
-AVG_MOVES_PER_GAME = 410     # configurable; affects only resume-game-count estimate.
-                             # Self-play TwixT games are long: empirical mean across
-                             # iters 4, 5, 6 = 420, 413, 403 moves/game (decreasing
-                             # as the model gets more decisive). 410 is a slightly
-                             # conservative pick that errs toward over-running
-                             # (which produces extra valid data, not wrong data).
+LEARNING_STATE_BYTES = 1789       # naf.LearningState.NUM_BYTES; hardcoded for resilience
+AVG_MOVES_PER_GAME_DEFAULT = 410  # fallback only — used for iter 1 or when no prior
+                                  # iter data exists. Otherwise avg moves/game is
+                                  # estimated live from iter (N-1)'s on-disk positions
+                                  # (see estimate_avg_moves_per_game()).
 
 def positions_in_iteration(iteration, output_dir):
     pattern = re.compile(rf'^iter{iteration}_\d+\.bin$')
@@ -161,14 +159,15 @@ Total new code: ~40 lines, all in `train_loop.py`.
 
 ## Edge cases / assumptions
 
-1. **`AVG_MOVES_PER_GAME` accuracy.** Affects only resume estimation precision.
+1. **Avg moves/game accuracy.** Affects only resume estimation precision.
    If we underestimate, we run a few more games than needed (harmless). If we
    overestimate, we run a few fewer (less data than nominal target — also fine;
-   cadence numbers are heuristic). Default **410**, calibrated empirically from
-   `iter4`, `iter5`, `iter6` data via `show_bin_info.py` (means: 420, 413, 403).
-   The decreasing trend reflects stronger models being more decisive; 410 stays
-   roughly accurate for the next several iterations and biases slightly toward
-   over-running (extra data, not corrupt data) when it drifts.
+   cadence numbers are heuristic). Computed live by
+   `estimate_avg_moves_per_game()` as `positions(N-1) / planned_games(N-1)` —
+   self-calibrating, since game length drifts down as the model gets more
+   decisive (iter 4-6 ≈ 410, iter 8 ≈ 289). Falls back to
+   `AVG_MOVES_PER_GAME_DEFAULT = 410` for iter 1 or when prior-iter data is
+   absent.
 
 2. **Torn final record protection.** If a battle clone is killed mid-write
    (between writes to a single record), the file could end with a partial
