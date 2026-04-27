@@ -197,8 +197,11 @@ class CloneState(CloneLogTail):
         super().__init__(log_path)
         self.clone_id = clone_id
         self.expected_games = expected_games
-        self.socket_a = socket_a
-        self.socket_b = socket_b
+        # Match the full `location=<path>,` field, including trailing comma,
+        # so one socket path being a prefix of another (e.g. ".../v8" vs
+        # ".../v8_B") cannot cross-match.
+        self.tag_a = f"location={socket_a},"
+        self.tag_b = f"location={socket_b},"
         self.score_a = 0.0
         self.score_b = 0.0
 
@@ -207,9 +210,9 @@ class CloneState(CloneLogTail):
         if m:
             score = float(m.group(1))
             spec = m.group(2)
-            if self.socket_a in spec:
+            if self.tag_a in spec:
                 self.score_a = score
-            elif self.socket_b in spec:
+            elif self.tag_b in spec:
                 self.score_b = score
 
 
