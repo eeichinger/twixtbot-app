@@ -1,7 +1,11 @@
 # 01 — Replay buffer + minibatch sampling
 
-**Status:** investigating — current behavior characterised; one concrete gap
-identified (4-fold vs 8-fold symmetry augmentation).
+**Status:** investigating — batch-size lever active across two
+doublings: A→B (256→512) won 66/34, B→D-clean (512→1024) won 68/32,
+both at fixed compute (n=200, ±~6.5%). C (2× steps at batch=512) was
+within noise vs B — extra steps don't help at the saturation knee.
+Next: Variant E pushes batch to 2048 to find where the lever stops
+working.
 
 ## Question
 
@@ -237,29 +241,177 @@ python src/train.py --model models/v8_B.pt --device cuda \
 
 Then arena with arena.py against the existing `models/v8.pt`.
 
+## Findings — Variant A vs B (2026-04-27)
+
+Trained `v8_B.pt` from `v7.pt` with the proposed Variant B settings
+(`--num_batches 1000 --batch_size 512 --learning_rate 0.02`) and ran a
+200-game arena against `v8.pt` (Variant A: batch 256, lr 0.01,
+2000 batches — same wall-clock training compute).
+
+```
+arena.py --model-a models/v8.pt --model-b models/v8_B.pt --device cuda \
+  --total_games 200 --num_clones 18 --trials 400 --async_calls 32
+```
+
+| Variant | batch | num_batches | lr | Wins | Win % |
+|---|---|---|---|---|---|
+| A — `v8.pt`   | 256 | 2000 | 0.01 | 68 / 200 | 34.0% (±6.6%) |
+| B — `v8_B.pt` | 512 | 1000 | 0.02 | **132 / 200** | **66.0%** |
+
+Decisive in favour of B. Difference is ~32 percentage points at
+n=200 — well outside the ±6.6% Wilson interval, so this is not noise.
+At equal training compute, **batch=512 with linearly-scaled LR (0.02)
+trains a clearly stronger network** than batch=256 / lr=0.01.
+
+Caveat — this confounds two changes (batch size and number of update
+steps). `v8_B` saw the same total samples but ran half as many
+optimizer steps. The "fair-compute" reading is "B wins"; the question
+"would 2000 batches at 512/0.02 win by even more?" is exactly what
+Variant C is for.
+
+### Bug noticed and fixed in arena.py
+
+The raw `Arena complete` line printed `model-b: 0.0%`. Cause:
+score-routing bug — `socket_a = "/tmp/twixtbot_nns_v8"` is a substring
+of `socket_b = "/tmp/twixtbot_nns_v8_B"`, so the `socket_a in spec`
+check matched B-runs first and routed every B-score into the A bucket
+(while B itself stayed at 0). Worked around for this run by re-summing
+the per-clone final scores from `00.log..17.log` (model-a=68,
+model-b=132).
+
+Fixed in `b7ebf49` ("fix bug in arena when calculating summary"):
+match against `location=<path>,` (with the trailing comma) instead of
+the bare socket path, so prefix-overlapping paths can't cross-match
+(`src/arena.py:197-215`). Future arena runs across prefix-related
+model names should print correct totals directly.
+
+## Findings — Variant B vs C (2026-04-27)
+
+`v8_C` trained with the proposed Variant C settings (from `v7.pt`,
+`batch_size=512`, `num_batches=2000`, `lr=0.02` — same batch and LR as
+B, 2× the optimizer steps, 2× the samples seen). Arena `v8_B` vs
+`v8_C` at the same n=200, trials=400, num_clones=18:
+
+```
+arena.py --model-a models/v8_B.pt --model-b models/v8_C.pt --device cuda \
+  --total_games 200 --num_clones 18 --trials 400 --async_calls 32
+```
+
+| Variant | batch | num_batches | lr | Samples seen | Wins | Win % |
+|---|---|---|---|---|---|---|
+| B — `v8_B.pt` | 512 | 1000 | 0.02 |  512K | 108 / 200 | 54.0% (±6.9%) |
+| C — `v8_C.pt` | 512 | 2000 | 0.02 | 1024K | 92 / 200  | 46.0% |
+
+**Result is within noise.** The 8-percentage-point margin is smaller
+than the ±6.9% Wilson interval (95% CI for B: [47.1%, 60.9%], spans
+50%). Honest reading: "no detectable difference at n=200." A bigger
+n might tease a small edge out, but it's not worth chasing.
+
+**Practical takeaway:** at our current corpus size and at the new
+batch=512 / lr=0.02 operating point, **doubling optimizer steps from
+1000 to 2000 does not produce a meaningful additional gain.** Which
+in turn means B's big win over A was almost certainly the
+**batch-size lever itself**, not "A was under-trained." 1000 steps at
+batch=512 sits at or past the saturation knee for this corpus.
+
+Minor caveat: `--decay_rate 0.95` over 2000 steps drops C's effective
+average LR below B's, so C's "more steps" came with a slightly lower
+effective LR. Probably small relative to the noise here; not worth a
+re-run.
+
+## Findings — Variant B vs D-clean (2026-04-27)
+
+`v8_D` trained as the "D-clean" flavour from the previous next-action
+plan: from `v7.pt`, `batch_size=1024`, `num_batches=500`, `lr=0.04`.
+**Same 512K total samples as A and B** — pure batch-size-lever
+isomorphic continuation. Arena n=200, trials=400, num_clones=18:
+
+```
+arena.py --model-a models/v8_B.pt --model-b models/v8_D.pt --device cuda \
+  --total_games 200 --num_clones 18 --trials 400 --async_calls 32
+```
+
+| Variant | batch | num_batches | lr | Samples seen | Wins | Win % |
+|---|---|---|---|---|---|---|
+| B  — `v8_B.pt` | 512  | 1000 | 0.02 | 512K | 64 / 200  | 32.0% (±6.5%) |
+| D  — `v8_D.pt` | 1024 |  500 | 0.04 | 512K | **136 / 200** | **68.0%** |
+
+Decisive — margin (36 pp) is far outside the ±6.5% Wilson interval.
+**The batch-size lever is still very much active at the 512→1024
+doubling**, with linear LR scaling (Goyal). At fixed compute,
+`v8_D` is clearly stronger than `v8_B`.
+
+`v8_D` is the new strongest checkpoint.
+
 ## Where we left off
 
-Current behavior characterised. AlphaZero rationale documented.
-Augmentation gap **disproved** — our 4-fold D₂ is correct given the
-white-to-move canonicalisation in `NetInputs.init_from_game_black`.
-
-**One concrete experiment-ready candidate:**
-
-- **Batch size 256 → 512 with scaled LR**. Cheap A/B test described
-  in "Side-thread: batch size choice" above.
-
-The other AlphaZero differences (window shape, train:games ratio) are
-either hardware-bound or arguably better in our pipeline already.
+- **`v8_D` is the strongest checkpoint** so far. Trajectory:
+  `v8` (A, batch=256) ≪ `v8_B` ≈ `v8_C` (batch=512) ≪ `v8_D`
+  (batch=1024).
+- The batch-size lever has produced **two consecutive decisive wins**
+  at fixed compute (256→512, 512→1024), each ~66/34. The natural next
+  question: where does the lever stop working?
+- The "more steps" lever (B vs C at batch=512) is exhausted at our
+  current corpus size — additional optimizer steps at the saturation
+  knee don't help.
+- arena.py socket-name matching tightened in `b7ebf49`; no further
+  workaround needed.
 
 ## Next action
 
-**Run the batch-size A/B (Variant A vs B above).** Direct `train.py`
-invocation, no orchestration needed. Total cost: ~3 min training +
-1-2 hour arena. Decisive about whether 256 is leaving training quality
-on the table at fixed compute.
+**Variant E — push the batch lever from 1024 to 2048.** Same
+isomorphic D-clean shape: same total samples as A/B/D, batch
+doubled, LR doubled per Goyal linear-scaling rule.
 
-Capture the arena result in this file under a new "Findings" section
-before moving on.
+| Variant | batch | num_batches | lr | Samples | What it tests |
+|---|---|---|---|---|---|
+| E (D-clean continuation) | **2048** | **250** | **0.08** | 512K | "Does the batch lever still work at 2048?" |
+
+Train and arena commands:
+
+```bash
+# E (from v7, isomorphic with A/B/D-clean)
+cp models/v7.pt models/v8_E.pt
+python src/train.py --model models/v8_E.pt --device cuda \
+  --num_batches 250 --batch_size 2048 --learning_rate 0.08 \
+  --decay_rate 0.95 --temperature 0.5 --policy_epsilon 0.01 \
+  --save_after 50 spdata/
+
+# Head-to-head vs the current best (D)
+python src/arena.py --model-a models/v8_D.pt --model-b models/v8_E.pt \
+  --device cuda --total_games 200 --num_clones 18 --trials 400 \
+  --async_calls 32 --progress_interval 60
+```
+
+**Things to watch during the E training run:**
+
+1. **VRAM.** 5070 Ti has 16GB; the model is small (~1.9M params), so
+   batch=2048 should fit comfortably, but worth one `nvidia-smi`
+   check during the run. If OOM, fall back to batch=1536 (and
+   lr ≈ 0.06) or use gradient accumulation.
+2. **Loss spike at start.** The Goyal linear-scaling result holds up
+   to ~8K batch *with a short warmup* — at lr=0.08 from step 1, the
+   first few updates can blow up. If the first 5–10 loss values
+   diverge instead of dropping, that's why; remediation is a 25-step
+   linear LR warmup. With only 250 total steps, an unwarmed run is
+   the riskiest piece of this experiment.
+
+**Decision rule after E arena:**
+
+- E ≫ D (e.g. ≥60% over 200 games): lever still active; queue
+  Variant F at batch=4096, lr=0.16.
+- E ≈ D (within ±~7% of 50%): **1024 is the saturation knee.** Adopt
+  D's settings (batch=1024 / lr=0.04) as the default operating point
+  and stop pushing this lever.
+- E ≪ D: batch=2048 is past the knee or hit a sharp-minima / warmup
+  problem. If a warmup-equipped re-run still loses, 1024 is the knee.
+
+**Adopt-as-default housekeeping:** independent of E, the A→B→D
+trajectory already justifies flipping `train_loop.py`'s defaults
+from `BATCH_SIZE=256` / `LEARNING_RATE=0.01` to **`1024` / `0.04`**
+(skip the intermediate 512 step — D is now the strongest result).
+Small standalone commit. Worth doing before the next full
+`train_loop.py` iter regardless of how E lands.
 
 Open / deferred: KataGo's curriculum sampling across model windows;
-investigate after the cheap experiments close.
+investigate after batch-size experiments close.
