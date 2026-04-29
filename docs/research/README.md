@@ -16,7 +16,7 @@ off" / "Next action" sections rebuild the context fast.
 | File | Topic | Status | Cross-refs |
 |---|---|---|---|
 | [01-replay-buffer-sampling.md](01-replay-buffer-sampling.md) | Replay buffer + minibatch sampling vs full-pass training | investigating | (none yet) |
-| [02-model-scaling.md](02-model-scaling.md) | Scaling depth / width / heads | scoped | B7, B5 in `improvements.md`; §5–5c in `further_training_improvements.md` |
+| [02-model-scaling.md](02-model-scaling.md) | Scaling depth / width / heads | investigating | B7, B5 in `improvements.md`; §5–5c in `further_training_improvements.md` |
 | [03-search-efficiency.md](03-search-efficiency.md) | Reducing trials per move (Gumbel AlphaZero, "QZero") | scoped | A4 (cpuct tuning) in `improvements.md` |
 | [04-global-board-features.md](04-global-board-features.md) | End-to-end connection awareness (KataGo-style global pooling) | scoped | **B9a** in `improvements.md`; §5b in `further_training_improvements.md` |
 
@@ -40,19 +40,26 @@ off" / "Next action" sections rebuild the context fast.
 
 ## Current model / training context (for quick recall)
 
-As of iter 7 → iter 8 (April 2026):
-- **Model:** 20-block × 48-filter ResNet (`src/model.py`). ~1.9M parameters.
-  Activation: `abs()` (legacy from TF1 ancestor; could be GELU). 528 policy
-  outputs (24×22 inner grid). 3-class value head (loss/draw/win).
-- **Training cadence:** 10,000 self-play games per iter at trials=200; 2,000
-  training batches at batch=256.
-- **Hardware:** 7800X3D + 5070 Ti. Iter wall-time ≈ 13 hours self-play +
-  3 minutes training.
+As of v8_F (April 2026):
+- **Model:** 8-block × 64-filter ResNet (`src/model.py`). ~1.9M parameters.
+  Activation: GELU. 528 policy outputs (24×22 inner grid). 3-class value
+  head (loss/draw/win). VALID padding in the value head, 2 stride-2
+  reductions. Verified stronger than the deeper-narrower 48f×20b "Lampe"
+  shape at our training compute (see `02-model-scaling.md`).
+- **Training cadence:** 10,000 self-play games per iter at trials=200; per
+  topic 01's batch-size investigation, Phase B is now 125 batches at
+  batch=4096 / lr=0.16 / `--warmup_steps 25` (16× larger batches than the
+  original 2000×256, same total samples).
+- **Hardware:** 7800X3D + 5070 Ti (16 GB). batch=8192 OOMs; 4096 is the
+  practical training-batch ceiling on this card.
 - **NN throughput:** ~13,200 positions/s at batch=619 (compile + fp16).
 - **Self-play data volume:** ~4M positions per iter (~7 GB `.bin` files).
   ~410 moves/game, decreasing slowly with model strength.
 - **Replay weighting:** `USE_WEIGHTED_SAMPLING = True`, recent tier (last 3
   iters) at weight 0.8, older at 0.2.
+- **Reference baseline:** `models/six-917000.pt` (Lampe's TF1 ancestor,
+  ported via `tools/convert_tf1_to_pt.py`). Beats v8_F 200/0; the gap is
+  almost entirely training volume, not architecture.
 
 The "iter 8 plays itself in self-play with much fewer position-cache hits
 than iter 6" observation (NN evals per game ~doubled from ~88 to ~200 per
