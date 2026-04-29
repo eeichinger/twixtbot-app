@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#16213e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TwixT Trainer" />
+  <link rel="apple-touch-icon" href="/twixtbot-app/icons/192.png" />
+  <title>TwixT Trainer</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <!-- Non-blocking font load: media="print" prevents render-blocking; onload applies to all media.
+       If offline, the fetch simply fails and the page renders with fallback fonts immediately. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&display=swap" media="print" onload="this.media='all'">
+  <!-- screen.width is physical device CSS pixels — unaffected by Safari
+       "Request Desktop Website" viewport scaling. Adds class before paint. -->
+  <script>if(window.screen.width<=430)document.documentElement.classList.add('phone-screen');</script>
+  <script type="module" crossorigin src="/twixtbot-app/assets/index-QZ-1ugC7.js"></script>
+  <link rel="stylesheet" crossorigin href="/twixtbot-app/assets/index-BJWld6aj.css">
+<link rel="manifest" href="/twixtbot-app/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/twixtbot-app/registerSW.js"></script></head>
+<body>
+  <div id="app">
+    <!-- Intro screen (shown by default; also shown after game ends) -->
+    <div id="intro-screen" style="position:relative">
+      <div class="bp-corner tl"></div>
+      <div class="bp-corner tr"></div>
+      <div class="bp-corner bl"></div>
+      <div class="bp-corner br"></div>
+      <button class="help-btn" id="intro-help-btn" title="Help">?</button>
+
+      <div class="loading-logo"><span class="bp-logo-cap">T</span><span class="bp-logo-sm">wix</span><span class="bp-logo-cap">T</span></div>
+      <p class="bp-trainer">Trainer</p>
+
+      <div class="bp-subtitle-line"></div>
+
+      <p class="bp-tagline">An ingenious strategy game for two</p>
+
+      <svg class="bp-diagram" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g opacity="0.3" fill="rgba(100,160,220,0.6)">
+          <circle cx="12" cy="12" r="2"/><circle cx="36" cy="12" r="2"/><circle cx="60" cy="12" r="2"/>
+          <circle cx="84" cy="12" r="2"/><circle cx="108" cy="12" r="2"/>
+          <circle cx="12" cy="36" r="2"/><circle cx="36" cy="36" r="2"/><circle cx="60" cy="36" r="2"/>
+          <circle cx="84" cy="36" r="2"/><circle cx="108" cy="36" r="2"/>
+          <circle cx="12" cy="60" r="2"/><circle cx="36" cy="60" r="2"/><circle cx="60" cy="60" r="2"/>
+          <circle cx="84" cy="60" r="2"/><circle cx="108" cy="60" r="2"/>
+          <circle cx="12" cy="84" r="2"/><circle cx="36" cy="84" r="2"/><circle cx="60" cy="84" r="2"/>
+          <circle cx="84" cy="84" r="2"/><circle cx="108" cy="84" r="2"/>
+          <circle cx="12" cy="108" r="2"/><circle cx="36" cy="108" r="2"/><circle cx="60" cy="108" r="2"/>
+          <circle cx="84" cy="108" r="2"/><circle cx="108" cy="108" r="2"/>
+        </g>
+        <line x1="36" y1="84" x2="60" y2="60" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+        <line x1="60" y1="60" x2="84" y2="36" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+        <line x1="36" y1="60" x2="60" y2="84" stroke="#5dade2" stroke-width="1.5" opacity="0.8"/>
+        <line x1="60" y1="36" x2="84" y2="60" stroke="#5dade2" stroke-width="1.5" opacity="0.8"/>
+        <circle cx="36" cy="84" r="5" fill="#e74c3c"/>
+        <circle cx="60" cy="60" r="5" fill="#e74c3c"/>
+        <circle cx="84" cy="36" r="5" fill="#e74c3c"/>
+        <circle cx="36" cy="60" r="5" fill="#5dade2"/>
+        <circle cx="60" cy="84" r="5" fill="#5dade2"/>
+        <circle cx="84" cy="60" r="5" fill="#5dade2"/>
+        <circle cx="60" cy="36" r="5" fill="#5dade2"/>
+        <defs>
+          <filter id="glow-r"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glow-b"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+      </svg>
+
+      <div id="mode-selector">
+        <button class="mode-btn" data-mode="pvc">vs Computer</button>
+        <button class="mode-btn"        data-mode="pvp">vs Player</button>
+      </div>
+      <button id="start-btn">Start Game</button>
+      <button id="lg-explore-btn">Browse Little Golem</button>
+      <p class="intro-attribution">Based on <a href="https://github.com/BonyJordan/twixtbot" target="_blank" rel="noopener">twixtbot</a> by Jordan Lampe &amp; <a href="https://github.com/stevens68/twixtbot-ui" target="_blank" rel="noopener">twixtbot-ui</a> by stevens68</p>
+      <footer class="screen-footer" style="width:100%;margin-top:auto">
+        <span id="intro-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+        <span class="footer-license">MIT License</span>
+      </footer>
+    </div>
+
+    <!-- Loading screen (hidden; shown only if model not yet ready when Start is pressed) -->
+    <div id="loading-screen" class="hidden">
+      <div class="loading-logo">TwixT</div>
+      <div class="loading-spinner"></div>
+      <div id="loading-msg">Loading AI model…</div>
+    </div>
+
+    <!-- Game screen (hidden until game starts) -->
+    <div id="game-screen" class="hidden">
+      <header id="status-bar">
+        <button id="new-game-btn" title="Return to title screen">&#8592;</button>
+        <span id="status-text">Your turn (Blue)</span>
+        <div id="win-prob-bar"></div>
+        <button id="export-btn"  title="Download game as .tsgf file">Save</button>
+        <button class="help-btn" title="Help">?</button>
+      </header>
+      <!-- Analysis panel: shown after each AI move, collapsible -->
+      <div id="analysis-panel" class="hidden">
+        <button id="analysis-toggle" class="analysis-header">
+          <span class="analysis-icon">▾</span>
+          <span id="win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </button>
+        <div class="sparkline-wrap"><canvas id="eval-sparkline" class="eval-sparkline"></canvas></div>
+        <div id="analysis-body" class="analysis-body">
+          <div id="top3-bars" class="top3-bars"></div>
+        </div>
+      </div>
+
+      <!-- Move list panel (U1) — collapsible, hidden until first move -->
+      <div id="move-list-panel" class="hidden">
+        <button id="move-list-toggle" class="move-list-header">
+          <span class="analysis-icon">▾</span>
+          <span id="move-list-label" class="move-list-label">Moves</span>
+        </button>
+        <div id="move-list-body" class="move-list-body"></div>
+      </div>
+
+      <main id="board-container">
+        <canvas id="board-canvas"></canvas>
+        <button id="swap-btn" class="hidden" title="Swap sides: take the AI's first peg and play as White">⇄ Swap</button>
+      </main>
+
+      <div id="game-controls">
+        <button id="settings-btn" title="Settings">⚙</button>
+        <button id="hint-btn"    title="Let the AI play this move for you" class="hidden">Hint</button>
+        <button id="undo-btn"    title="Undo your last move">Undo</button>
+        <button id="redo-btn"    title="Redo the undone move" disabled>Redo</button>
+        <button id="resign-btn"  title="Resign this game" class="hidden">Resign</button>
+        <button id="heatmap-btn" title="Toggle policy heatmap" class="hidden">Heatmap</button>
+      </div>
+
+      <!-- Settings slide-up panel -->
+      <div id="settings-panel" class="hidden">
+        <div id="settings-backdrop"></div>
+        <div id="settings-sheet">
+          <div class="settings-row">
+            <label class="settings-label">Strength</label>
+            <select id="strength-select" title="Bot strength"></select>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Think time</label>
+            <select id="think-time-select" title="AI think time"></select>
+          </div>
+        </div>
+      </div>
+
+      <footer id="game-footer">
+        <span id="app-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+        <span class="footer-license">MIT License</span>
+      </footer>
+
+      <!-- Overlay shown while AI is thinking -->
+      <div id="thinking-overlay" class="hidden">
+        <div class="thinking-spinner"></div>
+        <div>AI is thinking…</div>
+        <div id="thinking-progress" class="thinking-progress"></div>
+      </div>
+    </div>
+
+    <!-- LG Explore screen -->
+    <div id="lg-screen" class="hidden">
+      <header id="lg-header">
+        <button id="lg-back-btn" title="Back to intro">&#8592;</button>
+        <span id="lg-title">Little Golem</span>
+        <button class="help-btn" title="Help">?</button>
+      </header>
+      <div id="lg-body">
+        <div id="lg-search-row">
+          <input id="lg-search-input" type="text" placeholder="Player name or Game ID"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
+          <button id="lg-search-btn">Search</button>
+        </div>
+        <div id="lg-paste-section">
+          <div id="lg-paste-divider">— or paste / upload a .tsgf file —</div>
+          <textarea id="lg-paste-input" rows="3"
+            placeholder="(;FF[4]EV[twixt]PB[...]PW[...]SZ[24]…"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
+          <div id="lg-paste-btns">
+            <label id="lg-upload-label" for="lg-file-input">Upload file</label>
+            <input id="lg-file-input" type="file" accept="*/*" />
+            <button id="lg-paste-replay-btn">Replay</button>
+          </div>
+        </div>
+        <div id="lg-status">
+          <div id="lg-empty-msg">Enter a player name or game&nbsp;ID</div>
+          <div id="lg-loading-msg" class="hidden">
+            <div class="loading-spinner" style="width:24px;height:24px;border-width:2px"></div>
+            <span>Loading&hellip;</span>
+          </div>
+          <div id="lg-error-msg" class="hidden"></div>
+        </div>
+        <div id="lg-results"></div>
+      </div>
+      <footer class="screen-footer">
+        <span id="lg-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+        <span class="footer-license">MIT License</span>
+      </footer>
+    </div>
+
+    <!-- Replay viewer screen -->
+    <div id="replay-screen" class="hidden">
+      <header id="replay-header">
+        <button id="replay-back-btn" title="Back to search">&#8592;</button>
+        <span id="replay-title">Replay</span>
+        <button id="replay-heatmap-btn" title="Toggle policy heatmap">Heatmap</button>
+        <button id="replay-analyse-btn" title="Analyse this position">Analyse</button>
+        <button id="replay-play-pvp-btn" title="Continue playing from this position in PvP mode">Play PvP</button>
+        <button class="help-btn" title="Help">?</button>
+      </header>
+      <main id="replay-board-container">
+        <canvas id="replay-canvas"></canvas>
+      </main>
+      <div id="replay-analysis-panel" class="hidden">
+        <div class="analysis-header replay-analysis-header">
+          <span id="replay-win-prob-text" class="win-prob-text">—</span>
+          <span class="analysis-hint">analysis</span>
+        </div>
+        <div class="analysis-body" style="display:block">
+          <div id="replay-top3-bars" class="top3-bars"></div>
+        </div>
+      </div>
+      <!-- Move list panel (L4) — collapsible, always present in replay -->
+      <div id="replay-move-list-panel">
+        <div class="move-list-header-row">
+          <button id="replay-move-list-toggle" class="move-list-header">
+            <span class="analysis-icon">▾</span>
+            <span id="replay-move-list-label" class="move-list-label">Moves</span>
+          </button>
+          <button id="replay-analyse-game-btn" title="Analyse all moves with AI" class="replay-analyse-game-btn">Analyse game</button>
+        </div>
+        <div id="replay-move-list-body" class="move-list-body"></div>
+        <div id="replay-game-sparkline-wrap" class="hidden">
+          <div class="sparkline-wrap"><canvas id="replay-game-sparkline" class="eval-sparkline"></canvas></div>
+        </div>
+      </div>
+
+      <footer id="replay-controls">
+        <button id="replay-first-btn" title="First move">&#124;&#9664;</button>
+        <button id="replay-prev-btn"  title="Previous move">&#9664;</button>
+        <span   id="replay-counter">Move 0 / 0</span>
+        <button id="replay-next-btn"  title="Next move">&#9654;</button>
+        <button id="replay-last-btn"  title="Last move">&#9654;&#124;</button>
+      </footer>
+      <footer class="screen-footer">
+        <span id="replay-version" class="footer-version" title="Tap 3× for diagnostics"></span>
+        <a href="https://github.com/eeichinger/twixtbot-app/issues/new" target="_blank" rel="noopener">report an issue</a>
+        <span class="footer-license">MIT License</span>
+      </footer>
+    </div>
+
+    <!-- Help overlay — reachable from any screen via the ? button -->
+    <div id="help-overlay" class="hidden">
+      <div id="help-panel">
+        <div id="help-panel-header">
+          <span>Help</span>
+          <button id="help-close-btn" title="Close help">&#x2715;</button>
+        </div>
+        <div id="help-content"></div>
+      </div>
+    </div>
+
+    <!-- Diagnostic log overlay — lives outside game-screen so it's reachable from any screen -->
+    <div id="diag-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#00ff88;font-size:11px;font-family:monospace;padding:8px;z-index:9999;touch-action:pan-y">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong>Diagnostics</strong>
+        <div style="display:flex;gap:6px">
+          <button id="diag-share-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Share</button>
+          <button id="diag-clear-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 6px;cursor:pointer;font-size:11px">Clear</button>
+          <button id="diag-close-btn" style="background:none;border:1px solid #00ff88;color:#00ff88;padding:1px 8px;cursor:pointer;font-size:11px">✕</button>
+        </div>
+      </div>
+      <div id="diag-log-prev" style="color:#aaa;border-bottom:1px solid #444;margin-bottom:4px;padding-bottom:4px"></div>
+      <div id="diag-log-cur"></div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/twixtbot-app/sw.js', { scope: '/twixtbot-app/' })})}
