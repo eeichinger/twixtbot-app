@@ -224,6 +224,9 @@ class Trainer:
     def train_step(self, pegs, links, locs, p_target, v_target):
         """One gradient update.
 
+        v_target may be int64 class indices (hard target) OR float soft
+        target distribution [B, 3] (e.g. teacher distillation).
+
         Returns:
             (total_loss, policy_loss, value_loss) — Python floats
         """
@@ -231,7 +234,7 @@ class Trainer:
         self.optimizer.zero_grad()
         policy_logits, value_logits = self.model(pegs, links, locs)
         l1 = _policy_loss(policy_logits, p_target)
-        l2 = F.cross_entropy(value_logits, v_target)
+        l2 = _value_loss(value_logits, v_target)
         total = l1 + l2
         total.backward()
         self.optimizer.step()
@@ -248,7 +251,7 @@ class Trainer:
         with torch.no_grad():
             policy_logits, value_logits = self.model(pegs, links, locs)
         l1 = _policy_loss(policy_logits, p_target)
-        l2 = F.cross_entropy(value_logits, v_target)
+        l2 = _value_loss(value_logits, v_target)
         return float(l1 + l2), float(l1), float(l2)
 
 
@@ -256,6 +259,14 @@ def _policy_loss(logits, target):
     """Soft-target cross-entropy: -∑ target * log_softmax(logits), averaged over batch."""
     log_probs = F.log_softmax(logits, dim=1)
     return -(target * log_probs).sum(dim=1).mean()
+
+
+def _value_loss(logits, target):
+    """Hard-class CE if target is int64; soft CE if target is a float distribution."""
+    if target.dtype in (torch.float32, torch.float16, torch.float64):
+        log_probs = F.log_softmax(logits, dim=1)
+        return -(target * log_probs).sum(dim=1).mean()
+    return F.cross_entropy(logits, target)
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +293,10 @@ def main(argv=None):
     parser.add_argument('--save_after', '-S', type=int, default=0)
     parser.add_argument('--holdout', '-H', type=str, required=False)
     parser.add_argument('--holdout_fraction', '-F', type=float, default=1.0)
+    parser.add_argument('--teacher', type=str, default=None,
+                        help='Path to a teacher .pt model. If set, the spdata '
+                             'MCTS policy/value targets are replaced by the '
+                             'teacher\'s softmax outputs (knowledge distillation).')
     parser.add_argument('spfiles', metavar='S', type=str, nargs='*',
                         help='self-play binary log files')
     args = parser.parse_args(argv)
@@ -289,6 +304,15 @@ def main(argv=None):
     print(f'Loading model: {args.model}')
     model = torch.load(args.model, weights_only=False, map_location=args.device)
     trainer = Trainer(model, learning_rate=args.learning_rate, device=args.device)
+
+    teacher = None
+    if args.teacher:
+        print(f'Loading teacher: {args.teacher}')
+        teacher = torch.load(args.teacher, weights_only=False, map_location=args.device)
+        teacher.eval()
+        for p in teacher.parameters():
+            p.requires_grad_(False)
+        print(f'teacher params: {sum(p.numel() for p in teacher.parameters()):,}')
 
     if args.num_batches > 0:
         selector = wrs.WeightedRandomSelector()
@@ -338,6 +362,13 @@ def main(argv=None):
         batch_states = [sample_learning_state(selector)
                         for _ in range(args.batch_size)]
         batch = prepare_batch(batch_states, args.temperature, args.policy_epsilon, device=args.device)
+        if teacher is not None:
+            pegs, links, locs, _, _ = batch
+            with torch.no_grad():
+                t_p_logits, t_v_logits = teacher(pegs, links, locs)
+                p_target = F.softmax(t_p_logits, dim=1)
+                v_target = F.softmax(t_v_logits, dim=1)
+            batch = (pegs, links, locs, p_target, v_target)
         total, l1, l2 = trainer.train_step(*batch)
 
         x = numpy.array([1, b])

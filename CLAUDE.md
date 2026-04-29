@@ -58,6 +58,17 @@ in **`docs/planned-features.md`**. Update that file when adding new ideas or
 changing the status of an existing item. Do not track feature status in CLAUDE.md
 or in separate one-off docs.
 
+### Training-research goal
+
+> **Match (not surpass) `models/six-917000.pt` — Lampe's pre-trained TF1
+> ancestor — using methods that are effective and efficient on commodity
+> hardware (Ryzen 7800X3D + RTX 5070 Ti, 16 GB VRAM).** The interest is
+> in *learning what it takes* and in *trying newer methods* (e.g.,
+> Gumbel/QZero search efficiency), not in maximizing arena strength
+> beyond `six-917000`. Knowledge distillation from the teacher is a
+> useful diagnostic shortcut but not the path. Canonical statement and
+> open topics: `docs/research/README.md`.
+
 ---
 
 ## Original Python-Based Approach
