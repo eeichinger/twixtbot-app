@@ -273,6 +273,10 @@ def main(argv=None):
     parser.add_argument('--num_batches', '-n', type=int, default=1000)
     parser.add_argument('--learning_rate', '-L', type=float, default=0.01)
     parser.add_argument('--decay_rate', '-D', type=float, default=1.0)
+    parser.add_argument('--warmup_steps', '-W', type=int, default=0,
+                        help='Linearly ramp LR from 0 to --learning_rate over the '
+                             'first N steps. Required to avoid divergence at '
+                             'large-batch / large-LR (Goyal et al. 2017).')
     parser.add_argument('--temperature', '-t', type=float, default=0.5)
     parser.add_argument('--policy_epsilon', '-P', type=float, default=0.01)
     parser.add_argument('--save_after', '-S', type=int, default=0)
@@ -326,6 +330,10 @@ def main(argv=None):
     print(f'{when()} training start: {args.num_batches} batches, batch_size={args.batch_size}, device={args.device}')
 
     for b in range(args.num_batches):
+        if args.warmup_steps > 0 and b < args.warmup_steps:
+            warmup_lr = args.learning_rate * (b + 1) / args.warmup_steps
+            trainer.set_learning_rate(warmup_lr)
+            print(f'warmup lr={warmup_lr:.4g} ({b+1}/{args.warmup_steps})')
         print(f'batch {b}')
         batch_states = [sample_learning_state(selector)
                         for _ in range(args.batch_size)]
@@ -342,7 +350,7 @@ def main(argv=None):
             print(f'loss={total:.4g}')
         print(f'policy={l1:.4g}  value={l2:.4g}')
 
-        if prev_loss is not None and total > prev_loss:
+        if b >= args.warmup_steps and prev_loss is not None and total > prev_loss:
             new_lr = trainer.get_learning_rate() * args.decay_rate
             trainer.set_learning_rate(new_lr)
             print(f'reduce learning rate to {new_lr:.4g}')

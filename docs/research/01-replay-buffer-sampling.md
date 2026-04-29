@@ -1,11 +1,16 @@
 # 01 — Replay buffer + minibatch sampling
 
-**Status:** investigating — batch-size lever active across two
-doublings: A→B (256→512) won 66/34, B→D-clean (512→1024) won 68/32,
-both at fixed compute (n=200, ±~6.5%). C (2× steps at batch=512) was
-within noise vs B — extra steps don't help at the saturation knee.
-Next: Variant E pushes batch to 2048 to find where the lever stops
-working.
+**Status:** **closed** for now — batch-size lever validated across
+four doublings: A→B (256→512) won 66/34, B→D-clean (512→1024) won
+68/32, D→E (1024→2048) won 83/17, E→F (2048→4096) won 71/29 (with
+25-step LR warmup), all at fixed compute (n=200, ±~5–7%). G at
+batch=8192 OOMed on the 16GB GPU before any training step ran —
+**4096 is the practical hardware knee** for our setup. Lever margin
+peaked at 1024→2048 (Δ=+33pp) and was already receding by 2048→4096
+(Δ=+21pp), consistent with diminishing returns. Adopt F's settings
+(batch=4096 / lr=0.16 / warmup=25) as the new `train_loop.py`
+default. C (2× steps at batch=512) was within noise vs B — extra
+steps don't help at the saturation knee.
 
 ## Question
 
@@ -343,14 +348,122 @@ doubling**, with linear LR scaling (Goyal). At fixed compute,
 
 `v8_D` is the new strongest checkpoint.
 
+## Findings — Variant D vs E (2026-04-27)
+
+`v8_E` trained as the next D-clean continuation: from `v7.pt`,
+`batch_size=2048`, `num_batches=250`, `lr=0.08`. **Same 512K total
+samples as A/B/D** — pure batch-size-lever isomorphic continuation,
+1024→2048 doubling with linear LR scaling per Goyal. Arena n=200,
+trials=400, num_clones=18:
+
+```
+arena.py --model-a models/v8_D.pt --model-b models/v8_E.pt --device cuda \
+  --total_games 200 --num_clones 18 --trials 400 --async_calls 32
+```
+
+| Variant | batch | num_batches | lr | Samples | Wins | Win % |
+|---|---|---|---|---|---|---|
+| D — `v8_D.pt` | 1024 | 500 | 0.04 | 512K |  34.5 / 200 | 17.2% (±5.2%) |
+| E — `v8_E.pt` | 2048 | 250 | 0.08 | 512K | **165.5 / 200** | **82.8%** |
+
+Decisive — margin (~66 pp) is far outside the ±5.2% Wilson interval.
+Crucially, **the win-margin is *growing* with each doubling** rather
+than shrinking: 256→512 was 66%, 512→1024 was 68%, 1024→2048 is 83%.
+We are not at the saturation knee yet for batch size at our
+corpus/compute scale. (Aside: an earlier accidental `v8_B vs v8_E`
+arena gave E a 91.5% win rate — transitively consistent with E ≫ D.)
+
+The "loss spike at start" risk flagged in the previous next-action
+plan didn't materialise — `v8_E` trained cleanly without warmup. The
+caveat about warmup at lr=0.08 still applies more strongly to F
+(lr=0.16 from step 1).
+
+`v8_E` is the new strongest checkpoint.
+
+## Findings — Variant E vs F (2026-04-28)
+
+`v8_F` trained as the next D-clean continuation: from `v7.pt`,
+`batch_size=4096`, `num_batches=125`, `lr=0.16`, **`warmup_steps=25`**
+(linear ramp 0→0.16). First attempt without warmup diverged in the
+first 4 steps (loss 5.04 → 5.09 → 5.61 → 6.49, *above* uniform-random
+log(528)=6.27); aborted and restarted with warmup. Warmed run trained
+cleanly. (The previous E run got away unwarmed at lr=0.08; F at
+lr=0.16 is past Goyal's empirical unwarmed ceiling — confirms the
+doc's prior caveat.)
+
+The training was interrupted at step 100/125 (host suspend); resumed
+the final 25 steps from the saved checkpoint at lr=0.029 (the LR
+where the first run left off). Continuation was clean — no
+divergence, slope kept trending negative.
+
+The `--warmup_steps N` flag was added to `src/train.py` to support
+this experiment. It linearly ramps LR from 0 to `--learning_rate`
+over the first N steps and suppresses the decay-on-loss-rise logic
+during warmup. Same flag will be needed for any future Variant G
+(lr=0.32 — guaranteed to need warmup).
+
+Arena n=200, trials=400, num_clones=18:
+
+```
+arena.py --model-a models/v8_E.pt --model-b models/v8_F.pt --device cuda \
+  --total_games 200 --num_clones 18 --trials 400 --async_calls 32
+```
+
+| Variant | batch | num_batches | lr | warmup | Samples | Wins | Win % |
+|---|---|---|---|---|---|---|---|
+| E — `v8_E.pt` | 2048 | 250 | 0.08 |  0 | 512K |  58 / 200 | 29.0% (±6.3%) |
+| F — `v8_F.pt` | 4096 | 125 | 0.16 | 25 | 512K | **142 / 200** | **71.0%** |
+
+Decisive — margin (~42 pp) is far outside the ±6.3% Wilson interval.
+**The lever is still active at 4096**, but the win-margin has
+receded vs the previous step (E over D was 83/17). Read together:
+
+- 256 → 512:  66/34 (Δ=+16pp over 50%)
+- 512 → 1024: 68/32 (Δ=+18pp)
+- 1024 → 2048: **83/17 (Δ=+33pp, peak)**
+- 2048 → 4096: 71/29 (Δ=+21pp)
+
+Margin peaked at the 1024→2048 step and has begun shrinking. We are
+approaching diminishing returns but **not yet at the knee** (the doc's
+rule: ≥60% means "queue next"). One more step (G at 8192 / 0.32)
+will tell us whether we cross the knee or keep climbing.
+
+`v8_F` is the new strongest checkpoint.
+
+## Findings — Variant G attempted, OOM at batch=8192 (2026-04-28)
+
+Tried to extend the lever once more (batch=8192, lr=0.32, warmup=25,
+num_batches=63). Training aborted on the **first batch** with:
+
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.12 GiB.
+GPU 0 has a total capacity of 15.92 GiB of which 0 bytes is free.
+... 45.39 GiB is allocated by PyTorch ...
+```
+
+PyTorch's reported allocation (45 GiB) far exceeds the 16 GB GPU
+capacity, so this is genuine over-budget for activations + gradients
+at batch=8192, not just fragmentation. The doc-noted fallbacks
+(`batch=6144` non-canonical, or 2-step gradient accumulation requiring
+a code change in `train.py`) are out of scope for closing this
+investigation. **For our hardware (16 GB), 4096 is the largest batch
+size that fits, which makes it the practical knee regardless of
+whether the loss landscape would reward bigger.**
+
+`models/v8_G.pt` was deleted (never trained past step 0).
+
 ## Where we left off
 
-- **`v8_D` is the strongest checkpoint** so far. Trajectory:
-  `v8` (A, batch=256) ≪ `v8_B` ≈ `v8_C` (batch=512) ≪ `v8_D`
-  (batch=1024).
-- The batch-size lever has produced **two consecutive decisive wins**
-  at fixed compute (256→512, 512→1024), each ~66/34. The natural next
-  question: where does the lever stop working?
+- **`v8_F` is the strongest checkpoint, full stop.** Trajectory:
+  `v8` (A=256) ≪ `v8_B`≈`v8_C` (=512) ≪ `v8_D` (=1024) ≪ `v8_E`
+  (=2048) ≪ `v8_F` (=4096) [knee — bigger doesn't fit].
+- The batch-size lever produced **four consecutive decisive wins** at
+  fixed compute. Margins were 66/34, 68/32, 83/17, 71/29 — peaked at
+  the 1024→2048 step, receded once before hitting the hardware
+  ceiling.
+- **Warmup is mandatory** above lr=0.08 — confirmed empirically by
+  F's unwarmed first attempt diverging at step 4. `train.py` now has
+  `--warmup_steps N`.
 - The "more steps" lever (B vs C at batch=512) is exhausted at our
   current corpus size — additional optimizer steps at the saturation
   knee don't help.
@@ -359,59 +472,39 @@ doubling**, with linear LR scaling (Goyal). At fixed compute,
 
 ## Next action
 
-**Variant E — push the batch lever from 1024 to 2048.** Same
-isomorphic D-clean shape: same total samples as A/B/D, batch
-doubled, LR doubled per Goyal linear-scaling rule.
+**Adopt F's settings as `train_loop.py` defaults.** Single
+mechanical commit, no more experimentation needed:
 
-| Variant | batch | num_batches | lr | Samples | What it tests |
-|---|---|---|---|---|---|
-| E (D-clean continuation) | **2048** | **250** | **0.08** | 512K | "Does the batch lever still work at 2048?" |
+1. `train_loop.py:70` — `BATCH_SIZE = 256` → `BATCH_SIZE = 4096`
+2. `train_loop.py:71` — `LEARNING_RATE = 0.01` → `LEARNING_RATE = 0.16`
+3. Add `WARMUP_STEPS = 25` constant and pass `--warmup_steps` to
+   `train.py` via the existing arg list around `train_loop.py:534`.
+4. Scale `ITERATION_CADENCE` batches by 1/16 to preserve per-iter
+   total samples (the experiments validated *fixed-sample*, not
+   fixed-step):
+   - `(1, 1000, 500)` → `(1, 1000, 31)`
+   - `(4, 5000, 1500)` → `(4, 5000, 94)`
+   - `(99, 10000, 2000)` → `(99, 10000, 125)`
 
-Train and arena commands:
+Both changes are required together — flipping batch/LR without
+scaling cadence would 16× the per-iter Phase B compute, breaking
+the iteration budget that earlier work tuned the cadence to.
 
-```bash
-# E (from v7, isomorphic with A/B/D-clean)
-cp models/v7.pt models/v8_E.pt
-python src/train.py --model models/v8_E.pt --device cuda \
-  --num_batches 250 --batch_size 2048 --learning_rate 0.08 \
-  --decay_rate 0.95 --temperature 0.5 --policy_epsilon 0.01 \
-  --save_after 50 spdata/
+Verification step: at next `train_loop.py` resume, check the
+generated train.py command line includes
+`--batch_size 4096 --learning_rate 0.16 --warmup_steps 25` and the
+batch counts reflect the scaled cadence.
 
-# Head-to-head vs the current best (D)
-python src/arena.py --model-a models/v8_D.pt --model-b models/v8_E.pt \
-  --device cuda --total_games 200 --num_clones 18 --trials 400 \
-  --async_calls 32 --progress_interval 60
-```
+Open / deferred:
 
-**Things to watch during the E training run:**
-
-1. **VRAM.** 5070 Ti has 16GB; the model is small (~1.9M params), so
-   batch=2048 should fit comfortably, but worth one `nvidia-smi`
-   check during the run. If OOM, fall back to batch=1536 (and
-   lr ≈ 0.06) or use gradient accumulation.
-2. **Loss spike at start.** The Goyal linear-scaling result holds up
-   to ~8K batch *with a short warmup* — at lr=0.08 from step 1, the
-   first few updates can blow up. If the first 5–10 loss values
-   diverge instead of dropping, that's why; remediation is a 25-step
-   linear LR warmup. With only 250 total steps, an unwarmed run is
-   the riskiest piece of this experiment.
-
-**Decision rule after E arena:**
-
-- E ≫ D (e.g. ≥60% over 200 games): lever still active; queue
-  Variant F at batch=4096, lr=0.16.
-- E ≈ D (within ±~7% of 50%): **1024 is the saturation knee.** Adopt
-  D's settings (batch=1024 / lr=0.04) as the default operating point
-  and stop pushing this lever.
-- E ≪ D: batch=2048 is past the knee or hit a sharp-minima / warmup
-  problem. If a warmup-equipped re-run still loses, 1024 is the knee.
-
-**Adopt-as-default housekeeping:** independent of E, the A→B→D
-trajectory already justifies flipping `train_loop.py`'s defaults
-from `BATCH_SIZE=256` / `LEARNING_RATE=0.01` to **`1024` / `0.04`**
-(skip the intermediate 512 step — D is now the strongest result).
-Small standalone commit. Worth doing before the next full
-`train_loop.py` iter regardless of how E lands.
-
-Open / deferred: KataGo's curriculum sampling across model windows;
-investigate after batch-size experiments close.
+- **KataGo curriculum sampling across model windows.** Was the
+  original "next big idea" before the batch-size detour; revisit
+  next.
+- **Gradient accumulation in `train.py`.** Would let us test
+  effective-batch=8192 on this GPU. Worth ~50 lines of code
+  someday, but the diminishing-returns pattern (E→F margin already
+  half of D→E margin) makes it a low-priority follow-up rather
+  than a research blocker.
+- **Larger GPU.** If we ever migrate training off the 5070 Ti to
+  a 24+ GB card, re-open this lever from batch=8192 with longer
+  warmup (50 steps).

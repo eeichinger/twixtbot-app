@@ -66,23 +66,30 @@ NNS_USE_FP16 = True                    # --fp16 flag on src/nns.py
 NNS_READY_TIMEOUT_SEC = 60             # how long to wait for socket after spawn
 
 # --- Training (Phase B) ----------------------------------------------------
+# batch=4096 / lr=0.16 / warmup=25 is the operating point validated by
+# docs/research/01-replay-buffer-sampling.md (Variant F, n=200 arenas
+# across A/B/D/E/F). batch=8192 OOMs on a 16 GB GPU, so 4096 is the
+# practical knee for this hardware.
 TRAIN_DEVICE = "cuda"
-BATCH_SIZE = 256
-LEARNING_RATE = 0.01
+BATCH_SIZE = 4096
+LEARNING_RATE = 0.16
+WARMUP_STEPS = 25                      # required at lr>=0.16; --warmup_steps in train.py
 DECAY_RATE = 0.95
 TEMPERATURE = 0.5                      # must match self-play temperature
 POLICY_EPSILON = 0.01
-SAVE_AFTER = 200                       # intermediate checkpoint every N batches
+SAVE_AFTER = 25                        # intermediate checkpoint every N batches
 
 # --- Iteration cadence -----------------------------------------------------
 # List of (upper_iter_bound_inclusive, games_this_tier, batches_this_tier).
 # Entries are scanned in order; the first one whose bound covers the current
 # iteration index wins. The last entry's bound acts as the default for higher
 # iterations.
+# Batch counts are scaled to preserve per-iter total *samples* under the
+# 16x batch-size flip (batches × 4096 = previous batches × 256).
 ITERATION_CADENCE = [
-    (1,  1000,   500),   # iter 1
-    (4,  5000,  1500),   # iter 2-4
-    (99, 10000, 2000),   # iter 5+
+    (1,  1000,   31),    # iter 1     (was 500 batches × 256)
+    (4,  5000,   94),    # iter 2-4   (was 1500 batches × 256)
+    (99, 10000, 125),    # iter 5+    (was 2000 batches × 256)
 ]
 
 # --- Per-iteration MCTS trials scaling -------------------------------------
@@ -534,6 +541,7 @@ def run_training(iteration, current_model, next_model, batches, log):
         '--num_batches', str(batches),
         '--batch_size', str(BATCH_SIZE),
         '--learning_rate', str(LEARNING_RATE),
+        '--warmup_steps', str(WARMUP_STEPS),
         '--decay_rate', str(DECAY_RATE),
         '--temperature', str(TEMPERATURE),
         '--policy_epsilon', str(POLICY_EPSILON),
